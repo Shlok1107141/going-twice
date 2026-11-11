@@ -4,7 +4,7 @@
 
 ## Demo
 - Hosted app: https://going-twice.onrender.com (Render free tier; first load can take a moment to wake)
-- Video (under 3 min): [VIDEO_URL]
+- Video (under 3 min): https://youtu.be/u8RJl0X-BTE
 - Runs fully in the **PayPal sandbox**. No real money moves.
 
 ## The problem
