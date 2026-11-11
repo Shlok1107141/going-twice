@@ -53,19 +53,19 @@ function Header() {
   );
 }
 
-function RegisterCard({ onCreated }: { onCreated: (c: Created) => void }) {
+function RegisterCard({ onCreated, testCards }: { onCreated: (c: Created) => void; testCards?: boolean }) {
   const [name, setName] = useState("");
   const [hold, setHold] = useState(250);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function submit(e: FormEvent) {
+  async function submit(e: FormEvent, testCard = false) {
     e.preventDefault();
     if (!name.trim()) return;
     setBusy(true);
     setError(null);
     try {
-      const res = await post<Created>("/api/paddle", { name: name.trim(), holdAmount: hold });
+      const res = await post<Created>("/api/paddle", { name: name.trim(), holdAmount: hold, ...(testCard ? { testCard: true } : {}) });
       onCreated(res);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not register");
@@ -89,6 +89,11 @@ function RegisterCard({ onCreated }: { onCreated: (c: Created) => void }) {
       <button type="submit" disabled={busy || !name.trim()} className="w-full rounded-2xl bg-amber-600 py-4 text-xl font-black uppercase text-white shadow hover:bg-amber-700 disabled:bg-stone-300 disabled:text-stone-700">
         {busy ? "Getting your paddle…" : "Get my paddle"}
       </button>
+      {testCards && (
+        <button type="button" onClick={(e) => submit(e, true)} disabled={busy || !name.trim()} className="w-full rounded-2xl border-2 border-dashed border-rose-700 bg-rose-50 py-3 text-base font-bold text-rose-900 hover:bg-rose-100 disabled:opacity-50">
+          Use sandbox test card &mdash; no login
+        </button>
+      )}
     </form>
   );
 }
@@ -251,12 +256,12 @@ function AbsenteeSection({ state, refresh }: { state: State; refresh: () => Prom
 
   const agent = findPaddle(state, stored.value ?? undefined);
 
-  async function submit(e: FormEvent) {
+  async function submit(e: FormEvent, testCard = false) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      const res = await post<Created>("/api/agent", { name: name.trim(), holdAmount: hold, instruction: instruction.trim(), maxBid: Number(maxBid) });
+      const res = await post<Created>("/api/agent", { name: name.trim(), holdAmount: hold, instruction: instruction.trim(), maxBid: Number(maxBid), ...(testCard ? { testCard: true } : {}) });
       setOrderId(res.orderId);
       stored.set(res.paddleId);
       await refresh();
@@ -314,6 +319,11 @@ function AbsenteeSection({ state, refresh }: { state: State; refresh: () => Prom
           <button type="submit" disabled={busy || !name.trim() || !instruction.trim() || !(Number(maxBid) > 0)} className="w-full rounded-2xl bg-stone-900 py-3 text-lg font-black uppercase text-white hover:bg-stone-700 disabled:bg-stone-300 disabled:text-stone-700">
             {busy ? "Sending…" : "Send my agent"}
           </button>
+          {state.testCards && (
+            <button type="button" onClick={(e) => submit(e, true)} disabled={busy || !name.trim() || !instruction.trim() || !(Number(maxBid) > 0)} className="w-full rounded-2xl border-2 border-dashed border-rose-700 bg-rose-50 py-3 text-base font-bold text-rose-900 hover:bg-rose-100 disabled:opacity-50">
+              Use sandbox test card &mdash; no login
+            </button>
+          )}
         </form>
       )}
     </section>
@@ -350,7 +360,7 @@ export default function PaddlePage() {
   if (!state || !stored.ready) {
     body = <p className="py-16 text-center text-lg text-stone-700">{error ? "Reconnecting…" : "Loading…"}</p>;
   } else if (!stored.value) {
-    body = <RegisterCard onCreated={created} />;
+    body = <RegisterCard onCreated={created} testCards={state.testCards} />;
   } else if (!paddle) {
     body = settling ? (
       <p className="py-16 text-center text-lg text-stone-700">Getting your paddle&hellip;</p>

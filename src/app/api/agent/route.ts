@@ -9,7 +9,10 @@ export async function POST(req: Request) {
   const instruction = str(b.instruction, 300);
   const maxBid = parseMoney(b.maxBid, 10_000);
   const lotId = b.lotId === undefined || b.lotId === null || b.lotId === "" ? undefined : str(b.lotId, 64);
+  const testCard = b.testCard === true;
+  const email = b.email === undefined || b.email === "" ? undefined : str(b.email, 254);
   if (!name) return bad("name is required (max 40 chars)");
+  if (email === null || (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) return bad("email must be a valid address");
   if (holdAmount === null) return bad("holdAmount must be a positive dollar amount up to 10,000");
   if (!instruction) return bad("instruction is required (max 300 chars)");
   if (maxBid === null) return bad("maxBid must be a positive dollar amount");
@@ -19,9 +22,11 @@ export async function POST(req: Request) {
     const { paddle, orderId } = await createPaddle({
       name,
       holdAmount,
+      testCard,
+      email,
       agent: { instruction, maxBid, ...(lotId ? { lotId } : {}) },
     });
-    return Response.json(orderId ? { paddleId: paddle.id, orderId } : { paddleId: paddle.id });
+    return Response.json(orderId ? { paddleId: paddle.id, orderId } : { paddleId: paddle.id, held: true });
   } catch (e) {
     return fail(e);
   }

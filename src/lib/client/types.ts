@@ -54,6 +54,7 @@ export type Receipt = { paddleId: string; text: string; invoiceId?: string };
 export type State = {
   status: "lobby" | "live" | "closed";
   demoMode: boolean;
+  testCards?: boolean;
   currentLotId?: string;
   lots: Lot[];
   paddles: Paddle[];

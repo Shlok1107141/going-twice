@@ -17,6 +17,11 @@ export function isDemoMode(): boolean {
   return process.env.DEMO_MODE === "1" || !process.env.PAYPAL_CLIENT_ID;
 }
 
+/** Live PayPal against the sandbox: `testCard:true` paddles are allowed. */
+export function testCardsAllowed(): boolean {
+  return !isDemoMode() && (process.env.PAYPAL_ENV ?? "sandbox").toLowerCase() === "sandbox";
+}
+
 function persistEnabled(): boolean {
   return process.env.PERSIST !== "0";
 }
@@ -44,6 +49,7 @@ function freshStore(): Store {
     state: {
       status: "lobby",
       demoMode: isDemoMode(),
+      testCards: testCardsAllowed(),
       lots: seedLots(),
       paddles: [],
       events: [],
@@ -70,6 +76,7 @@ function load(): Store {
       const parsed = JSON.parse(raw) as Store;
       if (parsed?.state?.lots && parsed?.internal?.auctionId) {
         parsed.state.demoMode = isDemoMode();
+        parsed.state.testCards = testCardsAllowed();
         return parsed;
       }
     } catch {

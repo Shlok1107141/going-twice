@@ -1,5 +1,5 @@
 import { authorizePaddle } from "@/lib/auction/engine";
-import { bad, fail, readJson, str } from "@/lib/auction/http";
+import { fail, readJson, str } from "@/lib/auction/http";
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

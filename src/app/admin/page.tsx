@@ -58,6 +58,36 @@ function ConfirmButton({ label, confirmLabel, onConfirm, disabled, className }: 
   );
 }
 
+function QuickPaddle({ disabled, onAdd }: { disabled: boolean; onAdd: (body: { name: string; holdAmount: number; testCard: true }) => void }) {
+  const [name, setName] = useState("");
+  const [hold, setHold] = useState("250");
+  const ok = name.trim().length > 0 && Number(hold) > 0;
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!ok) return;
+        onAdd({ name: name.trim(), holdAmount: Number(hold), testCard: true });
+        setName("");
+      }}
+      className="flex flex-wrap items-end gap-2 rounded-lg border-2 border-dashed border-rose-700 bg-rose-50 p-2"
+      aria-label="Add a sandbox test-card paddle"
+    >
+      <label className="text-xs font-bold uppercase tracking-wider text-rose-900">
+        Name
+        <input value={name} onChange={(e) => setName(e.target.value)} maxLength={40} placeholder="Dana R." className="mt-1 block w-32 rounded-md border border-stone-300 bg-white px-2 py-1.5 text-sm font-normal normal-case tracking-normal text-stone-900" />
+      </label>
+      <label className="text-xs font-bold uppercase tracking-wider text-rose-900">
+        Hold $
+        <input value={hold} onChange={(e) => setHold(e.target.value)} type="number" min={1} step={1} className="mt-1 block w-20 rounded-md border border-stone-300 bg-white px-2 py-1.5 text-sm font-normal text-stone-900" />
+      </label>
+      <button type="submit" disabled={disabled || !ok} className="rounded-md bg-rose-700 px-3 py-1.5 text-sm font-bold text-white hover:bg-rose-800 disabled:opacity-50">
+        Add test-card paddle
+      </button>
+    </form>
+  );
+}
+
 export default function AdminPage() {
   const { state, error, refresh } = useAuctionState(1000);
   const [busy, setBusy] = useState<string | null>(null);
@@ -130,6 +160,9 @@ export default function AdminPage() {
           onConfirm={() => act("close", "/api/close")}
           className="rounded-lg bg-stone-900 px-5 py-2 font-bold text-white hover:bg-stone-700"
         />
+        {(state.testCards || state.demoMode) && !closed && (
+          <QuickPaddle disabled={busy !== null} onAdd={(body) => act("paddle", "/api/paddle", body)} />
+        )}
         {busy && <span role="status" className="text-sm font-semibold text-stone-700">Working&hellip;</span>}
         {error && <span role="status" className="text-sm font-bold text-rose-800">Connection problem: {error}</span>}
       </div>

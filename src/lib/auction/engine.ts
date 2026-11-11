@@ -14,6 +14,7 @@ import {
   recomputeTotals,
   resetStore,
   save,
+  testCardsAllowed,
   type Lot,
   type Paddle,
   type State,
@@ -64,12 +65,24 @@ export function reset(): State {
   return resetStore();
 }
 
-type NewPaddle = { name: string; holdAmount: number; agent?: Paddle["agent"] };
+type NewPaddle = { name: string; holdAmount: number; agent?: Paddle["agent"]; testCard?: boolean; email?: string };
 
-/** Demo: hold is simulated and immediately `held`. Live: creates an AUTHORIZE order (`pending`). */
+// PayPal's published sandbox test Visa (not a real card). Sandbox only.
+function sandboxTestCard() {
+  return { number: "4111111111111111", expiry: `${new Date().getFullYear() + 3}-12`, name: "Demo Bidder" };
+}
+
+/**
+ * Demo: hold is simulated and immediately `held`. Live: creates an AUTHORIZE order (`pending`).
+ * Live + sandbox + testCard: the order is funded with PayPal's sandbox test Visa and authorized
+ * immediately, so the paddle gets a real sandbox authorization with no buyer login.
+ */
 export async function createPaddle(input: NewPaddle): Promise<{ paddle: Paddle; orderId?: string }> {
   const s = getState();
   if (s.status === "closed") throw new EngineError(409, "Auction is closed");
+  if (input.testCard && !isDemoMode() && !testCardsAllowed()) {
+    throw new EngineError(400, "testCard is only allowed when PAYPAL_ENV=sandbox");
+  }
   const p: Paddle = {
     id: nextId("p"),
     number: 100 + s.paddles.length + 1,
@@ -79,6 +92,7 @@ export async function createPaddle(input: NewPaddle): Promise<{ paddle: Paddle; 
     committed: 0,
     status: "pending",
     ...(input.agent ? { agent: input.agent } : {}),
+    ...(input.email ? { payerEmail: input.email } : {}),
   };
 
   if (isDemoMode()) {
@@ -87,6 +101,24 @@ export async function createPaddle(input: NewPaddle): Promise<{ paddle: Paddle; 
     p.status = "held";
     s.paddles.push(p);
     addLedger({ kind: "authorized", paddleId: p.id, amount: p.holdAmount, paypalId: p.authorizationId, status: "CREATED", note: "simulated hold" });
+  } else if (input.testCard) {
+    const order = await pp.createAuthorizeOrder({
+      amount: p.holdAmount,
+      paddleId: p.id,
+      description: `Going Twice paddle #${p.number} (hold, not a charge)`,
+      testCard: sandboxTestCard(),
+      requestId: `order:${getInternal().auctionId}:${p.id}`,
+    });
+    p.orderId = order.id;
+    const auth = order.authorization ?? (await pp.authorizeOrder(order.id)).authorization;
+    if (!["CREATED", "PENDING"].includes(auth.status)) {
+      throw new EngineError(402, `Test-card authorization ${auth.status.toLowerCase()}`);
+    }
+    p.authorizationId = auth.id;
+    p.holdAmount = Math.min(p.holdAmount, dollars(pp.toCents(auth.amount.value)));
+    p.status = "held";
+    s.paddles.push(p);
+    addLedger({ kind: "authorized", paddleId: p.id, amount: p.holdAmount, paypalId: auth.id, status: auth.status, note: "sandbox test card" });
   } else {
     const order = await pp.createAuthorizeOrder({
       amount: p.holdAmount,
@@ -99,7 +131,8 @@ export async function createPaddle(input: NewPaddle): Promise<{ paddle: Paddle; 
     save();
   }
   pushEvent({ type: "system", text: `Paddle #${p.number} (${p.name}${p.kind === "agent" ? ", absentee agent" : ""}) joined${p.status === "held" ? ` with a ${money(p.holdAmount)} hold` : ""}.`, paddleId: p.id });
-  return { paddle: p, orderId: isDemoMode() ? undefined : p.orderId };
+  if (p.status === "held" && p.kind === "agent" && s.currentLotId) triggerAgents(s.currentLotId);
+  return { paddle: p, orderId: p.status === "pending" ? p.orderId : undefined };
 }
 
 /** Live: after buyer approval, place the hold. Demo: no-op (already held). Idempotent. */
@@ -116,7 +149,7 @@ export async function authorizePaddle(paddleId: string, orderId: string): Promis
   p.authorizationId = authorization.id;
   // The hold is whatever PayPal actually authorized (never more than requested).
   p.holdAmount = Math.min(p.holdAmount, dollars(pp.toCents(authorization.amount.value)));
-  p.payerEmail = order.payer?.email_address;
+  p.payerEmail = order.payer?.email_address ?? p.payerEmail;
   p.status = "held";
   addLedger({ kind: "authorized", paddleId: p.id, amount: p.holdAmount, paypalId: authorization.id, status: authorization.status });
   pushEvent({ type: "system", text: `Paddle #${p.number} (${p.name}) is live with a ${money(p.holdAmount)} hold.`, paddleId: p.id });

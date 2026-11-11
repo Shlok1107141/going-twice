@@ -12,7 +12,7 @@ type Paddle = { id: string; number: number; name: string; kind: 'human'|'agent';
 type Lot = { id: string; title: string; description: string; emoji: string; startPrice: number; increment: number; status: 'pending'|'open'|'sold'|'unsold'; highBid: number; highPaddleId?: string; winnerPaddleId?: string; finalPrice?: number; phase: 'bidding'|'going-once'|'going-twice'|'sold' };
 type AuctionEvent = { id: string; ts: number; type: 'bid'|'agent-bid'|'stall'|'going-once'|'going-twice'|'sold'|'system'; text: string; paddleId?: string; lotId?: string };
 type LedgerRow = { id: string; ts: number; kind: 'authorized'|'captured'|'voided'|'payout'|'receipt'; paddleId?: string; amount: number; paypalId?: string; status: string; note?: string };
-type State = { status: 'lobby'|'live'|'closed'; demoMode: boolean; currentLotId?: string; lots: Lot[]; paddles: Paddle[]; events: AuctionEvent[]; // newest last, max 50
+type State = { status: 'lobby'|'live'|'closed'; demoMode: boolean; testCards?: boolean; // live sandbox: testCard paddles allowed currentLotId?: string; lots: Lot[]; paddles: Paddle[]; events: AuctionEvent[]; // newest last, max 50
   caption: { text: string; ts: number }; // what the auctioneer is saying now
   ledger: LedgerRow[]; totals: { held: number; captured: number; voided: number; paidOut: number }; receipts: { paddleId: string; text: string; invoiceId?: string }[] };
 ```
@@ -22,15 +22,17 @@ type State = { status: 'lobby'|'live'|'closed'; demoMode: boolean; currentLotId?
 |---|---|---|
 | GET `/api/state` | – | `State` (UI polls every 1s; stage may poll 700ms) |
 | POST `/api/reset` | – | `State` (fresh demo auction with 3 lots) |
-| POST `/api/paddle` | `{name, holdAmount}` | live: `{paddleId, orderId}` (client then renders PayPal buttons with that order); demo: `{paddleId, held:true}` |
+| POST `/api/paddle` | `{name, holdAmount, testCard?, email?}` | live: `{paddleId, orderId}` (client then renders PayPal buttons with that order); live + `testCard:true` (sandbox only): `{paddleId, held:true}`; demo: `{paddleId, held:true}` |
 | POST `/api/paddle/[id]/authorize` | `{orderId}` | `{paddle}` after server calls authorize; sets status `held` |
-| POST `/api/agent` | `{name, holdAmount, instruction, maxBid, lotId?}` | `{paddleId}` creates an agent paddle (held in demo mode; in live mode it uses the same authorize flow by returning `{paddleId, orderId}`) |
+| POST `/api/agent` | `{name, holdAmount, instruction, maxBid, lotId?, testCard?, email?}` | `{paddleId, held:true}` creates an agent paddle (held in demo mode or with `testCard:true`; otherwise in live mode it uses the same authorize flow by returning `{paddleId, orderId}`) |
 | POST `/api/lot/start` | `{lotId}` | `State`; opens the lot, auctioneer announces it |
 | POST `/api/bid` | `{paddleId, lotId, amount}` | `{ok:true}` or `{ok:false, error}`; server rule: amount ≥ highBid+increment (or startPrice for first bid), and paddle.committed − (own current high on this lot) + amount ≤ holdAmount |
 | POST `/api/auctioneer/tick` | – | `{ok:true}`; the stage calls it every 2s; server decides stall / going-once / going-twice / auto-hammer by elapsed time since last bid (stall ≥8s, going-once ≥14s, going-twice ≥18s, sold ≥22s; demo may use `TICK_SPEED` multiplier) |
 | POST `/api/lot/hammer` | `{lotId}` | `State`; force sold now |
 | POST `/api/close` | – | `State`; one capture per winning paddle (sum of its won lots, final_capture), void every other held authorization, Payouts batch of captured total to TREASURER_PAYPAL_EMAIL, Claude-written receipt per winner (+ PayPal invoice marked paid in live mode); sets status `closed` |
 | POST `/api/webhooks/paypal` | PayPal event | `200`; verify signature in live mode, update ledger status |
+
+**Sandbox test-card paddles.** When the server runs with live keys and `PAYPAL_ENV=sandbox` (`state.testCards === true`), `testCard:true` makes the server create the AUTHORIZE order with PayPal's published sandbox test Visa as `payment_source.card` and authorize it immediately: a real sandbox authorization id, no buyer login, paddle is `held` at once. Rejected with 400 when `PAYPAL_ENV=live`; ignored in demo mode. Optional `email` is the receipt address (otherwise the PayPal payer email; card paddles have none, so their receipt invoice is skipped unless `email` is given).
 
 Idempotency: `/api/close` must be safe to call twice (second call returns current state without new money movement).
 
