@@ -1,5 +1,5 @@
 // Payments v2 authorizations: capture (at the gavel), void (non-winners), reauthorize (stretch).
-import { paypalRequest, toCents, usd, type Link, type Money } from "./client";
+import { PayPalError, paypalRequest, toCents, usd, type Link, type Money } from "./client";
 
 export interface Authorization {
   id: string;
@@ -52,19 +52,49 @@ export async function captureAuthorization(
 ): Promise<Capture> {
   if (toCents(input.amount) <= 0) throw new Error("Capture amount must be > 0 (void instead)");
   const amount = usd(input.amount);
-  return paypalRequest<Capture>(
-    "POST",
-    `/v2/payments/authorizations/${encodeURIComponent(authorizationId)}/capture`,
-    {
-      body: {
-        amount,
-        final_capture: input.finalCapture ?? true,
-        ...(input.invoiceId ? { invoice_id: input.invoiceId } : {}),
-        ...(input.noteToPayer ? { note_to_payer: input.noteToPayer.slice(0, 255) } : {}),
-        ...(input.softDescriptor ? { soft_descriptor: input.softDescriptor.slice(0, 22) } : {}),
+  try {
+    return await paypalRequest<Capture>(
+      "POST",
+      `/v2/payments/authorizations/${encodeURIComponent(authorizationId)}/capture`,
+      {
+        body: {
+          amount,
+          final_capture: input.finalCapture ?? true,
+          ...(input.invoiceId ? { invoice_id: input.invoiceId } : {}),
+          ...(input.noteToPayer ? { note_to_payer: input.noteToPayer.slice(0, 255) } : {}),
+          ...(input.softDescriptor ? { soft_descriptor: input.softDescriptor.slice(0, 22) } : {}),
+        },
+        requestId: input.requestId ?? `capture:${authorizationId}:${amount.value}`,
       },
-      requestId: input.requestId ?? `capture:${authorizationId}:${amount.value}`,
-    },
+    );
+  } catch (e) {
+    // A retry after a network timeout can hit 422 DUPLICATE_TRANSACTION / DUPLICATE_INVOICE_ID /
+    // AUTHORIZATION_ALREADY_CAPTURED even though the first attempt succeeded at PayPal. Recover the
+    // existing capture instead of leaving the winner's money in limbo; rethrow if there is none.
+    const err = e as PayPalError;
+    const dup = err instanceof PayPalError && err.status === 422 &&
+      /DUPLICATE|ALREADY_CAPTURED|PREVIOUSLY_CAPTURED/i.test(`${err.issue ?? ""} ${err.paypalName ?? ""} ${err.message}`);
+    if (!dup) throw e;
+    const existing = await findExistingCapture(authorizationId, amount.value);
+    if (existing) return existing;
+    throw e;
+  }
+}
+
+/** Look up a capture already made against this authorization (via its order), matching the amount. */
+async function findExistingCapture(authorizationId: string, value: string): Promise<Capture | null> {
+  const auth = await getAuthorization(authorizationId);
+  const orderId = (auth as unknown as { supplementary_data?: { related_ids?: { order_id?: string } } })
+    .supplementary_data?.related_ids?.order_id;
+  if (!orderId) return null;
+  const order = await paypalRequest<{
+    purchase_units?: Array<{ payments?: { captures?: Capture[] } }>;
+  }>("GET", `/v2/checkout/orders/${encodeURIComponent(orderId)}`, {});
+  const captures = (order.purchase_units ?? []).flatMap((u) => u.payments?.captures ?? []);
+  return (
+    captures.find((c) => (c as unknown as { amount?: { value?: string } }).amount?.value === value) ??
+    captures[0] ??
+    null
   );
 }
 
