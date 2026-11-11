@@ -1,0 +1,14 @@
+{
+  "extraKnownMarketplaces": {
+    "paypal-ai-toolkit": {
+      "source": { "source": "github", "repo": "paypal/AI-Toolkit" }
+    },
+    "ponytail": {
+      "source": { "source": "github", "repo": "DietrichGebert/ponytail" }
+    }
+  },
+  "enabledPlugins": {
+    "paypal@paypal-ai-toolkit": true,
+    "ponytail@ponytail": true
+  }
+}
