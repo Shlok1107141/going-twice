@@ -42,7 +42,12 @@ async function callGemini(
       .map((p) => p.text ?? "")
       .join("")
       .trim();
-    return text || null;
+    if (!text) return null;
+    if (text.includes("{")) return text; // JSON reply: leave as is
+    // Plain spoken line: keep the first line only, drop markdown and stage directions.
+    const first = text.split("\n").map((s) => s.trim()).find(Boolean) ?? "";
+    const clean = first.replace(/[*_`]/g, "").replace(/^["“]|["”]$/g, "").trim();
+    return clean || null;
   } catch (e) {
     console.error("[gemini]", (e as Error).name === "AbortError" ? "timeout" : (e as Error).message);
     return null;
