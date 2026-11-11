@@ -25,6 +25,9 @@ export type Lot = {
   winnerPaddleId?: string;
   finalPrice?: number;
   phase: "bidding" | "going-once" | "going-twice" | "sold";
+  fmv?: number;
+  image?: string;
+  sources?: { retailer: string; price: number; url: string }[];
 };
 
 export type AuctionEvent = {

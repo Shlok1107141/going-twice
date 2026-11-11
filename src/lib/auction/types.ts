@@ -36,6 +36,10 @@ export type Lot = {
   phase: "bidding" | "going-once" | "going-twice" | "sold";
   /** extra: estimated fair market value used for receipts (an estimate, not tax advice). */
   fmv?: number;
+  /** extra: small photo (data URL or https URL) of the donated item, shown on the stage. */
+  image?: string;
+  /** extra: retail listings (via Channel3) the FMV was estimated from. */
+  sources?: { retailer: string; price: number; url: string }[];
 };
 
 export type AuctionEventType =

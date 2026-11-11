@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
+import { AutopilotPanel } from "@/components/admin/AutopilotPanel";
+import { SnapLot } from "@/components/admin/SnapLot";
 import { SandboxBadge } from "@/components/SandboxBadge";
 import { post } from "@/lib/client/api";
 import { clock, findPaddle, headroom, money } from "@/lib/client/format";
@@ -20,6 +22,11 @@ const badge: Record<string, string> = {
   live: "bg-amber-200 text-amber-950",
   closed: "bg-stone-900 text-amber-100",
 };
+
+const noopSub = () => () => {};
+function useSearch(): string {
+  return useSyncExternalStore(noopSub, () => window.location.search, () => "");
+}
 
 const th = "px-3 py-2 text-left text-xs font-bold uppercase tracking-wider text-stone-600";
 const td = "px-3 py-2 align-top";
@@ -89,6 +96,7 @@ function QuickPaddle({ disabled, onAdd }: { disabled: boolean; onAdd: (body: { n
 }
 
 export default function AdminPage() {
+  const search = useSearch();
   const { state, error, refresh } = useAuctionState(1000);
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -131,6 +139,17 @@ export default function AdminPage() {
 
   return (
     <main className="mx-auto w-full max-w-6xl space-y-6 p-4 sm:p-6">
+      <nav aria-label="Auction pages" className="flex flex-wrap gap-2 text-sm font-bold">
+        {[
+          ["Open stage", "/stage"],
+          ["Bidder page", "/paddle"],
+          ["Gala report", "/report"],
+        ].map(([text, href]) => (
+          <a key={href} href={`${href}${search}`} className="rounded-full border border-stone-300 bg-white px-3 py-1 text-stone-800 hover:bg-amber-50">
+            {text}
+          </a>
+        ))}
+      </nav>
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <Link href="/" className="text-xs font-bold uppercase tracking-widest text-amber-800 hover:underline">
@@ -265,6 +284,10 @@ export default function AdminPage() {
           )}
         </section>
       </div>
+
+      <AutopilotPanel />
+
+      <SnapLot />
 
       <section className={panel} aria-labelledby="led-h">
         <h2 id="led-h" className="mb-3 font-bold text-stone-900">Ledger</h2>

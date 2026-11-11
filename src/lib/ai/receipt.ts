@@ -5,7 +5,7 @@ import { money } from "./auctioneer";
 
 export const SCHOOL_NAME = "Maple Street Elementary PTA (placeholder nonprofit)";
 
-export type ReceiptItem = { title: string; paid: number; fmv: number };
+export type ReceiptItem = { title: string; paid: number; fmv: number; listings?: number };
 
 const DISCLAIMER =
   "The fair market value shown is a good-faith estimate by the organizer, not an appraisal or tax advice. " +
@@ -13,7 +13,8 @@ const DISCLAIMER =
 
 function lineFor(i: ReceiptItem): string {
   const excess = Math.max(0, Math.round((i.paid - i.fmv) * 100) / 100);
-  return `${i.title}: paid ${money(i.paid)}; goods and services received, estimated FMV ${money(i.fmv)}; amount above estimated FMV ${money(excess)}.`;
+  const via = i.listings ? ` (estimated from ${i.listings} retail listings via Channel3)` : "";
+  return `${i.title}: paid ${money(i.paid)}; goods and services received, estimated FMV ${money(i.fmv)}${via}; amount above estimated FMV ${money(excess)}.`;
 }
 
 export function templateReceipt(name: string, items: ReceiptItem[]): string {
