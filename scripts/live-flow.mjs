@@ -74,6 +74,8 @@ async function main() {
   const health = await api("GET", "/api/health");
   check(health.ok === true && health.demoMode === false, "health ok, server is NOT in demo mode");
 
+  if (process.env.AUCTION_TYPE === "estate") return estateFlow();
+
   const s0 = await api("POST", "/api/reset");
   check(s0.status === "lobby" && s0.paddles.length === 0, "reset -> lobby, no paddles");
   check(s0.testCards === true, "server allows sandbox test-card paddles");
@@ -188,6 +190,49 @@ async function main() {
   const rn = await (await fetch(BASE + "/api/room/new")).json();
   check(/^[A-Z0-9]{1,12}$/.test(rn.room ?? ""), `GET /api/room/new -> ${rn.room}`);
 
+  console.log(failures ? `\n${failures} check(s) FAILED` : "\nALL CHECKS PASSED");
+  process.exit(failures ? 1 : 0);
+}
+
+// AUCTION_TYPE=estate: consignment sale. One real Payouts batch pays two consignors and the house.
+// Consignor emails default to SANDBOX_BUYER_*, the house to TREASURER_PAYPAL_EMAIL (set on the server).
+async function estateFlow() {
+  const st0 = await api("POST", "/api/auction/type", { type: "estate" });
+  check(st0.auctionType === "estate" && st0.settings?.commissionPct === 15 && st0.lots.length === 4, "estate room created: 15% commission, 4 sample lots");
+  const eli = await api("POST", "/api/paddle", { name: "Eli K.", holdAmount: 600, testCard: true });
+  check(eli.held === true, `test-card paddle held (${eli.error ?? eli.paddleId})`);
+  const auth = (await state()).paddles[0].authorizationId;
+  check(isReal(auth), `real sandbox authorization ${auth}`);
+  for (const [lotId, amount] of [["lot-sideboard", 200], ["lot-silver", 300]]) {
+    await api("POST", "/api/lot/start", { lotId });
+    check((await bid(eli.paddleId, lotId, amount)).ok === true, `Eli bids $${amount} on ${lotId}`);
+    await api("POST", "/api/lot/hammer", { lotId });
+  }
+  const closed = await api("POST", "/api/close");
+  check(closed.status === "closed", "close -> closed");
+  const { ledger, totals, receipts } = closed;
+  const cap = ledger.find((r) => r.kind === "captured");
+  check(cap && isReal(cap.paypalId) && cap.amount === 500 && cap.status === "COMPLETED", `capture ${cap?.paypalId} $${cap?.amount} ${cap?.status}`);
+  const pays = ledger.filter((r) => r.kind === "payout");
+  const batchId = pays[0]?.paypalId;
+  const sum = Math.round(pays.reduce((t, r) => t + r.amount, 0) * 100) / 100;
+  check(pays.length >= 2 && isReal(batchId) && new Set(pays.map((r) => r.paypalId)).size === 1 && pays.every((r) => r.status !== "FAILED"), `one real payout batch ${batchId} with ${pays.length} items`);
+  check(sum === totals.captured && totals.paidOut === totals.captured, `payout items sum $${sum} = captured $${totals.captured}`);
+  check(pays.every((r) => /consignor 85% \/ house 15%/.test(r.note)), "ledger notes show the 85/15 split");
+  for (const r of pays) console.log(`  ..   $${r.amount}  ${r.note}`);
+  if (isReal(batchId)) {
+    const b = await ppGet(`/v1/payments/payouts/${batchId}`);
+    if (b?.items) {
+      console.log(`  ..   PayPal batch ${batchId}: ${b.batch_header?.batch_status}`);
+      for (const it of b.items) console.log(`  ..   item ${it.payout_item_id} ${it.payout_item?.amount?.value} ${it.transaction_status}`);
+      const paypalSum = b.items.reduce((t, it) => t + Math.round(Number(it.payout_item?.amount?.value) * 100), 0);
+      check(b.items.length === pays.length && paypalSum === Math.round(totals.captured * 100), `PayPal batch holds ${b.items.length} items summing $${paypalSum / 100}`);
+    }
+  }
+  check(receipts.length === 1 && /sales receipt/i.test(receipts[0].text) && /consignor credit/i.test(receipts[0].text), "sales receipt with consignor credit");
+  for (const r of ledger.filter((x) => x.kind === "receipt")) console.log(`  ..   receipt invoice ${r.paypalId ?? "(none)"} ${r.status}${r.note ? ` (${r.note})` : ""}`);
+  const again = await api("POST", "/api/close");
+  check(again.ledger.length === ledger.length, "second close moves no money");
   console.log(failures ? `\n${failures} check(s) FAILED` : "\nALL CHECKS PASSED");
   process.exit(failures ? 1 : 0);
 }

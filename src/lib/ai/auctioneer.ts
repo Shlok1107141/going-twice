@@ -2,6 +2,7 @@
 // Claude adds a short follow-up quip (max one call in flight, 4 s timeout). Claude never
 // decides pacing or money here: the engine owns phases, this module only writes words.
 import { getState, setCaption } from "@/lib/auction/store";
+import { typeConfig } from "@/lib/auction/auctionTypes";
 import { callClaude, claudeEnabled } from "./claude";
 
 export type GusEvent =
@@ -15,7 +16,18 @@ export type GusEvent =
   | "unsold"
   | "close";
 
-export type GusContext = { lot?: string; name?: string; amount?: number; next?: number; extra?: string };
+export type GusContext = {
+  lot?: string;
+  name?: string;
+  amount?: number;
+  next?: number;
+  extra?: string;
+  /** estate: who the lot is from, e.g. "the Hendricks estate". */
+  consignor?: string;
+  /** farm: head count, so Gus can quote a per-head price. */
+  unit?: "head" | "lot";
+  quantity?: number;
+};
 
 const LINES: Record<GusEvent, string[]> = {
   open: [
@@ -75,21 +87,39 @@ function fill(t: string, c: GusContext): string {
     .replaceAll("{lot}", c.lot ?? "this lot")
     .replaceAll("{name}", c.name ?? "our bidder")
     .replaceAll("{amount}", money(c.amount) || "this price")
-    .replaceAll("{next}", money(c.next) || "more");
+    .replaceAll("{next}", money(c.next) || "more")
+    .replaceAll("{consignor}", c.consignor ?? "the consignor")
+    .replaceAll("{each}", c.unit === "head" && (c.quantity ?? 0) > 1 && c.amount ? `, that's ${money(Math.round((c.amount / (c.quantity ?? 1)) * 100) / 100)} a head` : "");
 }
 
 export function templateLine(kind: GusEvent, c: GusContext): string {
-  const list = LINES[kind];
+  const override = (typeConfig(getState().auctionType).gus.lines as Partial<Record<GusEvent, string[]>>)[kind];
+  const list = override?.length ? override : LINES[kind];
   const rot = (g.__gusRot ??= {});
   const i = rot[kind] ?? Math.floor(Math.random() * list.length);
   rot[kind] = (i + 1) % list.length;
   return fill(list[i % list.length], c);
 }
 
-const SYSTEM =
-  "You are Gus, the warm, funny, slightly over-caffeinated volunteer auctioneer at an elementary school charity gala. " +
-  "Keep it school-appropriate and kind: tease the room, never a person; no mention of money moving, cards or fees. " +
+const REPLY_RULES =
   "Reply with exactly ONE short spoken line (at most 18 words) to be read aloud. Plain text only: no markdown, no lists, no quotes, no emoji, no stage directions.";
+
+/** Charity keeps the original gala prompt word for word; other types swap in their persona and vocabulary. */
+function systemPrompt(): string {
+  const cfg = typeConfig(getState().auctionType);
+  if (cfg.type === "charity") {
+    return (
+      "You are Gus, the warm, funny, slightly over-caffeinated volunteer auctioneer at an elementary school charity gala. " +
+      "Keep it school-appropriate and kind: tease the room, never a person; no mention of money moving, cards or fees. " +
+      REPLY_RULES
+    );
+  }
+  return (
+    `You are Gus, ${cfg.gus.persona}. ` +
+    `Keep it friendly and tasteful: tease the room, never a person; no mention of cards or payment mechanics. Vocabulary you may use: ${cfg.gus.vocabulary}. ` +
+    REPLY_RULES
+  );
+}
 
 /**
  * Say something now. Returns the template line (already on the caption). For lively events,
@@ -102,8 +132,8 @@ export function say(kind: GusEvent, c: GusContext): string {
     g.__gusInflight = true;
     const user =
       `Event: ${kind}. Lot: ${c.lot ?? "-"}. Bidder: ${c.name ?? "-"}. Amount: ${money(c.amount) || "-"}. ` +
-      `Next bid: ${money(c.next) || "-"}. ${c.extra ?? ""}\nYou just said: "${line}"\nAdd one short follow-up line.`;
-    void callClaude({ system: SYSTEM, user, maxTokens: 80, timeoutMs: 4000, fast: true })
+      `Next bid: ${money(c.next) || "-"}. ${c.consignor ? `From: ${c.consignor}. ` : ""}${c.extra ?? ""}\nYou just said: "${line}"\nAdd one short follow-up line.`;
+    void callClaude({ system: systemPrompt(), user, maxTokens: 80, timeoutMs: 4000, fast: true })
       .then((reply) => {
         const first = reply?.split("\n").map((l) => l.trim()).find(Boolean);
         const clean = first?.replace(/^["']|["']$/g, "").trim();

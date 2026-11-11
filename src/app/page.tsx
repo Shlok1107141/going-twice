@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { SandboxBadge } from "@/components/SandboxBadge";
+import { AUCTION_TYPE_LIST } from "@/lib/auction/auctionTypes";
 import { StartRoom } from "@/components/StartRoom";
 
 const screens = [
@@ -28,6 +29,15 @@ export default function Home() {
         <p className="mt-5 max-w-2xl text-xl text-stone-700 sm:text-2xl">
           An AI auctioneer for school charity auctions. Every bidder&apos;s paddle is a PayPal authorization hold, so bids are backed by real funds and nobody is charged until the hammer falls.
         </p>
+        <p className="mt-4 max-w-2xl text-lg font-semibold text-amber-900">Built for the school gala. Works for any live auction &mdash; in the room or online.</p>
+        <ul aria-label="Auction types" className="mt-4 flex flex-wrap gap-2">
+          {AUCTION_TYPE_LIST.map((t) => (
+            <li key={t.type} className="rounded-full border border-stone-300 bg-white px-3 py-1 text-sm font-bold text-stone-800">
+              <span aria-hidden>{t.icon} </span>
+              {t.label}
+            </li>
+          ))}
+        </ul>
         <div className="mt-6">
           <StartRoom />
         </div>

@@ -1,6 +1,16 @@
 // Shared types for the auction engine. Shape is the binding contract in docs/API.md;
 // fields marked "extra" are additive (the UI may ignore them).
 
+export type AuctionType = "charity" | "estate" | "collectibles" | "farm";
+
+/** Public, editable per-room numbers (emails live in Internal.payout, never in State). */
+export type AuctionSettings = {
+  /** Buyer's premium % added on top of hammer (always 0 for charity). */
+  premiumPct: number;
+  /** House commission % kept from the hammer price on consigned lots (estate only). */
+  commissionPct: number;
+};
+
 export type PaddleStatus = "pending" | "held" | "captured" | "voided";
 
 export type Paddle = {
@@ -38,6 +48,11 @@ export type Lot = {
   fmv?: number;
   /** extra: small photo (data URL or https URL) of the donated item, shown on the stage. */
   image?: string;
+  /** extra: consignor / seller label shown to the room, e.g. "the Hendricks estate" (estate). */
+  consignor?: string;
+  /** extra: farm lots: sold as one lot, with a head count so Gus can quote a per-head price. */
+  unit?: "head" | "lot";
+  quantity?: number;
   /** extra: retail listings (via Channel3) the FMV was estimated from. */
   sources?: { retailer: string; price: number; url: string }[];
 };
@@ -75,6 +90,9 @@ export type Receipt = { paddleId: string; text: string; invoiceId?: string };
 
 export type State = {
   status: "lobby" | "live" | "closed";
+  /** extra: kind of auction (default "charity"). */
+  auctionType: AuctionType;
+  settings: AuctionSettings;
   demoMode: boolean;
   /** extra: live PayPal against the sandbox, so `testCard:true` paddles are allowed. */
   testCards?: boolean;
@@ -97,5 +115,7 @@ export type Internal = {
   /** stall line already said during the current quiet period. */
   stalled: boolean;
   payoutDone: boolean;
+  /** Payout addresses (kept out of public State): organizer/house, and per-lot consignors. */
+  payout?: { organizer?: string; consignors?: Record<string, string> };
   webhookIds: string[];
 };

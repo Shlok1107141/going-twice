@@ -27,7 +27,8 @@ export function templateReceipt(name: string, items: ReceiptItem[]): string {
   ].join("\n");
 }
 
-export async function writeReceipt(name: string, items: ReceiptItem[]): Promise<string> {
+export async function writeReceipt(name: string, items: ReceiptItem[], sales?: SalesContext): Promise<string> {
+  if (sales) return writeSalesReceipt(name, sales);
   const facts = items.map(lineFor).join("\n");
   const reply = await callClaude({
     system:
@@ -39,4 +40,49 @@ export async function writeReceipt(name: string, items: ReceiptItem[]): Promise<
   });
   // The disclaimer and the exact figures are always appended by code, whatever Claude wrote.
   return reply ? `${reply.trim()}\n\n${facts}\n${DISCLAIMER}` : templateReceipt(name, items);
+}
+
+// ---------------------------------------------------------------- sales receipts (non-charity)
+
+/** Code-computed numbers for a sales receipt: hammer, premium, total, and (estate) the consignor credit. */
+export type SalesContext = {
+  orgName: string;
+  premiumPct: number;
+  hammer: number;
+  premium: number;
+  total: number;
+  consignment: boolean;
+  commissionPct: number;
+  lots: { title: string; hammer: number; consignor?: string; credit: number; unit?: "head" | "lot"; quantity?: number }[];
+};
+
+const SALES_NOTE = "This is a sales receipt for goods purchased at auction, not a donation receipt.";
+
+function salesLines(c: SalesContext): string[] {
+  const lines = c.lots.map((l) => {
+    const head = l.unit === "head" && (l.quantity ?? 0) > 1 ? ` (${l.quantity} head, ${money(Math.round((l.hammer / (l.quantity ?? 1)) * 100) / 100)} per head)` : "";
+    const credit = c.consignment && l.consignor ? `; consignor credit ${money(l.credit)} to ${l.consignor} (${100 - c.commissionPct}% of hammer)` : "";
+    return `${l.title}: hammer ${money(l.hammer)}${head}${credit}.`;
+  });
+  lines.push(`Hammer total: ${money(c.hammer)}.`);
+  if (c.premium > 0) lines.push(`Buyer's premium (${c.premiumPct}%): ${money(c.premium)}.`);
+  lines.push(`Total charged: ${money(c.total)}.`);
+  return lines;
+}
+
+export function templateSalesReceipt(name: string, c: SalesContext): string {
+  return [`Thank you, ${name}! Sales receipt from ${c.orgName}.`, ...salesLines(c), SALES_NOTE].join("\n");
+}
+
+export async function writeSalesReceipt(name: string, c: SalesContext): Promise<string> {
+  const facts = salesLines(c).join("\n");
+  const reply = await callClaude({
+    system:
+      "You write short, warm sales receipts for an auction house. Use EXACTLY the numbers given; never invent or change amounts. " +
+      "This is a purchase, not a donation: do not mention tax deductions. Plain text, at most 70 words, no markdown.",
+    user: `Buyer: ${name}\nSeller: ${c.orgName}\nFacts:\n${facts}\nWrite a thank-you receipt that lists each lot, the hammer price${c.premium > 0 ? ", the buyer's premium" : ""} and the total charged.`,
+    maxTokens: 200,
+    timeoutMs: 4000,
+  });
+  return reply ? `${reply.trim()}\n\n${facts}\n${SALES_NOTE}` : templateSalesReceipt(name, c);
 }

@@ -5,7 +5,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { currentRoom } from "./room";
-import type { AuctionEvent, Internal, LedgerRow, Lot, State } from "./types";
+import { DEFAULT_AUCTION_TYPE, defaultSettings, typeConfig } from "./auctionTypes";
+import type { AuctionEvent, AuctionSettings, AuctionType, Internal, LedgerRow, Lot, State } from "./types";
 
 export * from "./types";
 
@@ -37,31 +38,61 @@ function persistEnabled(): boolean {
   return process.env.PERSIST !== "0";
 }
 
-function seedLots(): Lot[] {
-  const base = { status: "pending" as const, highBid: 0, phase: "bidding" as const };
-  return [
-    { id: "lot-principal", title: "Principal for a Day", emoji: "🎓",
-      description: "Your child runs morning announcements, picks the lunch dessert, and gets the big chair.",
-      startPrice: 50, increment: 10, fmv: 0, ...base },
-    { id: "lot-pizza", title: "Family Pizza Night Basket", emoji: "🍕",
-      description: "Two large pizzas, a board game, and movie-night snacks from a local pizzeria.",
-      startPrice: 40, increment: 5, fmv: 75, ...base },
-    { id: "lot-cabin", title: "Weekend Cabin Getaway", emoji: "🏕️",
-      description: "Two nights at a family's lakeside cabin. Sleeps six. Canoe included.",
-      startPrice: 200, increment: 25, fmv: 450, ...base },
-    { id: "lot-quilt", title: "Signed Class Quilt", emoji: "🧵",
-      description: "Hand-stitched by Room 4B, every square signed by a student.",
-      startPrice: 75, increment: 10, fmv: 60, ...base },
-  ];
+/** Sandbox buyer emails (env SANDBOX_BUYER_1..3 = "email:password"); only the email part is ever read. */
+export function sandboxBuyerEmails(): string[] {
+  return [1, 2, 3]
+    .map((n) => process.env[`SANDBOX_BUYER_${n}`]?.split(":")[0]?.trim())
+    .filter((e): e is string => !!e && e.includes("@"));
 }
 
-function freshStore(): Store {
+function seedLots(type: AuctionType): Lot[] {
+  const base = { status: "pending" as const, highBid: 0, phase: "bidding" as const };
+  return typeConfig(type).lots.map((l) => ({
+    id: l.id,
+    title: l.title,
+    description: l.description,
+    emoji: l.emoji,
+    startPrice: l.startPrice,
+    increment: l.increment,
+    ...(l.fmv !== undefined ? { fmv: l.fmv } : {}),
+    ...(l.consignor ? { consignor: l.consignor } : {}),
+    ...(l.unit ? { unit: l.unit } : {}),
+    ...(l.quantity ? { quantity: l.quantity } : {}),
+    ...base,
+  }));
+}
+
+export type NewAuctionOptions = {
+  type?: AuctionType;
+  settings?: Partial<AuctionSettings>;
+  organizerEmail?: string;
+  /** One email per consignor, in order of first appearance across the lots. */
+  consignorEmails?: string[];
+};
+
+function freshStore(o: NewAuctionOptions = {}): Store {
+  const type = o.type ?? DEFAULT_AUCTION_TYPE;
+  const lots = seedLots(type);
+  const settings: AuctionSettings = { ...defaultSettings(type), ...o.settings };
+  const consignors: Record<string, string> = {};
+  if (typeConfig(type).payoutPlan === "consignment") {
+    const list = o.consignorEmails?.length ? o.consignorEmails : sandboxBuyerEmails();
+    const groups: string[] = [];
+    for (const l of lots) if (l.consignor && !groups.includes(l.consignor)) groups.push(l.consignor);
+    for (const l of lots) {
+      const email = l.consignor && list.length ? list[groups.indexOf(l.consignor) % list.length] : undefined;
+      if (email) consignors[l.id] = email;
+    }
+  }
+  const organizer = o.organizerEmail || process.env.TREASURER_PAYPAL_EMAIL || process.env.TREASURER_RECEIVER || undefined;
   return {
     state: {
       status: "lobby",
+      auctionType: type,
+      settings,
       demoMode: isDemoMode(),
       testCards: testCardsAllowed(),
-      lots: seedLots(),
+      lots,
       paddles: [],
       events: [],
       caption: { text: "Welcome to the Maple Street gala! Grab a paddle and get those thumbs warmed up.", ts: Date.now() },
@@ -75,6 +106,7 @@ function freshStore(): Store {
       lastActivityAt: Date.now(),
       stalled: false,
       payoutDone: false,
+      payout: { ...(organizer ? { organizer } : {}), consignors },
       webhookIds: [],
     },
   };
@@ -99,6 +131,9 @@ function load(room: string): Store {
     if (parsed) {
       parsed.state.demoMode = isDemoMode();
       parsed.state.testCards = testCardsAllowed();
+      // Rooms persisted before auction types existed are charity galas.
+      parsed.state.auctionType ??= DEFAULT_AUCTION_TYPE;
+      parsed.state.settings ??= defaultSettings(parsed.state.auctionType);
       return parsed;
     }
   }
@@ -156,9 +191,9 @@ export function getInternal(): Internal {
   return store().internal;
 }
 
-/** Fresh auction (new auctionId, so PayPal idempotency keys never collide across rehearsals). */
-export function resetStore(): State {
-  const fresh = freshStore();
+/** Fresh auction, optionally of another type (new auctionId, so PayPal idempotency keys never collide across rehearsals). */
+export function resetStore(o?: NewAuctionOptions): State {
+  const fresh = freshStore(o);
   const room = currentRoom();
   rooms().delete(room);
   rooms().set(room, fresh);

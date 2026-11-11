@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState, useSyncExternalStore } from "react";
+import { AuctionTypePanel } from "@/components/admin/AuctionTypePanel";
 import { AutopilotPanel } from "@/components/admin/AutopilotPanel";
 import { SnapLot } from "@/components/admin/SnapLot";
 import { SandboxBadge } from "@/components/SandboxBadge";
@@ -190,6 +191,14 @@ export default function AdminPage() {
           {actionError}
         </p>
       )}
+
+      <AuctionTypePanel
+        key={state.auctionType ?? "charity"}
+        current={state.auctionType ?? "charity"}
+        settings={state.settings}
+        disabled={busy !== null}
+        onApply={(body) => act("type", "/api/auction/type", body)}
+      />
 
       <section aria-label="Totals" className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         {board.map(([label, v, color]) => (

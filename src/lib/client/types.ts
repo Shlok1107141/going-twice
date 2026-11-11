@@ -12,6 +12,9 @@ export type Paddle = {
   orderId?: string;
 };
 
+export type AuctionType = "charity" | "estate" | "collectibles" | "farm";
+export type AuctionSettings = { premiumPct: number; commissionPct: number };
+
 export type Lot = {
   id: string;
   title: string;
@@ -26,6 +29,9 @@ export type Lot = {
   finalPrice?: number;
   phase: "bidding" | "going-once" | "going-twice" | "sold";
   fmv?: number;
+  consignor?: string;
+  unit?: "head" | "lot";
+  quantity?: number;
   image?: string;
   sources?: { retailer: string; price: number; url: string }[];
 };
@@ -56,6 +62,8 @@ export type Receipt = { paddleId: string; text: string; invoiceId?: string };
 
 export type State = {
   status: "lobby" | "live" | "closed";
+  auctionType?: AuctionType;
+  settings?: AuctionSettings;
   demoMode: boolean;
   testCards?: boolean;
   currentLotId?: string;
