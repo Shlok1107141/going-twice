@@ -1,0 +1,184 @@
+#!/usr/bin/env node
+// End-to-end LIVE (PayPal sandbox) flow against a running server. No deps (Node 20+).
+//   node --env-file=.env.local scripts/live-flow.mjs [baseUrl]   (default http://localhost:3100)
+// Server: live keys, PAYPAL_ENV=sandbox, e.g. `PERSIST=0 TICK_SPEED=10 npx next dev -p 3100`.
+// Paddles use `testCard:true` (PayPal's sandbox test Visa), so every hold is a real sandbox
+// authorization with no buyer login. If PAYPAL_CLIENT_ID/SECRET are in this process's env too,
+// the script cross-checks authorization statuses directly with PayPal.
+// Exits non-zero if any assertion fails.
+
+const BASE = (process.argv[2] || "http://localhost:3100").replace(/\/$/, "");
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+let failures = 0;
+
+function check(cond, msg) {
+  if (cond) console.log(`  ok   ${msg}`);
+  else {
+    failures++;
+    console.log(`  FAIL ${msg}`);
+  }
+}
+
+async function api(method, path, body) {
+  const res = await fetch(BASE + path, {
+    method,
+    headers: body ? { "content-type": "application/json" } : {},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const json = await res.json().catch(() => ({}));
+  if (res.status >= 500) throw new Error(`${method} ${path} -> ${res.status} ${JSON.stringify(json)}`);
+  return json;
+}
+const state = () => api("GET", "/api/state");
+const lotOf = async (id) => (await state()).lots.find((l) => l.id === id);
+const nextBid = (lot) => (lot.highPaddleId ? lot.highBid + lot.increment : lot.startPrice);
+const bid = (paddleId, lotId, amount) => api("POST", "/api/bid", { paddleId, lotId, amount });
+const isReal = (id) => typeof id === "string" && id.length > 5 && !id.startsWith("DEMO-");
+
+async function runUntilClosed(lotId, timeoutMs = 60000) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < timeoutMs) {
+    await api("POST", "/api/auctioneer/tick");
+    const lot = await lotOf(lotId);
+    if (lot.status !== "open") return lot;
+    await sleep(300);
+  }
+  throw new Error(`lot ${lotId} never closed (is TICK_SPEED set?)`);
+}
+
+// Optional direct PayPal cross-check (same creds as the server).
+const PP_BASE = (process.env.PAYPAL_ENV || "sandbox").toLowerCase() === "live" ? "https://api-m.paypal.com" : "https://api-m.sandbox.paypal.com";
+let ppToken;
+async function ppGet(path) {
+  if (!process.env.PAYPAL_CLIENT_ID || !process.env.PAYPAL_CLIENT_SECRET) return null;
+  if (!ppToken) {
+    const r = await fetch(PP_BASE + "/v1/oauth2/token", {
+      method: "POST",
+      headers: {
+        Authorization: "Basic " + btoa(`${process.env.PAYPAL_CLIENT_ID.trim()}:${process.env.PAYPAL_CLIENT_SECRET.trim()}`),
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: "grant_type=client_credentials",
+    });
+    ppToken = (await r.json()).access_token;
+  }
+  const r = await fetch(PP_BASE + path, { headers: { Authorization: `Bearer ${ppToken}` } });
+  return r.ok ? r.json() : { httpStatus: r.status };
+}
+
+async function main() {
+  console.log(`Going Twice LIVE (sandbox) flow against ${BASE}`);
+  const health = await api("GET", "/api/health");
+  check(health.ok === true && health.demoMode === false, "health ok, server is NOT in demo mode");
+
+  const s0 = await api("POST", "/api/reset");
+  check(s0.status === "lobby" && s0.paddles.length === 0, "reset -> lobby, no paddles");
+  check(s0.testCards === true, "server allows sandbox test-card paddles");
+
+  const mk = (name, holdAmount, email) => api("POST", "/api/paddle", { name, holdAmount, testCard: true, email });
+  const dana = await mk("Dana R.", 300, "dana.gt-test@example.com");
+  const marcus = await mk("Marcus T.", 150, "marcus.gt-test@example.com");
+  const priya = await mk("Priya S.", 500, "priya.gt-test@example.com");
+  const agent = await api("POST", "/api/agent", {
+    name: "Grandma Jo",
+    holdAmount: 200,
+    instruction: "Get the pizza basket for the grandkids, up to $70",
+    maxBid: 100,
+    testCard: true,
+    email: "jo.gt-test@example.com",
+  });
+  for (const [n, r] of [["Dana", dana], ["Marcus", marcus], ["Priya", priya], ["agent", agent]]) {
+    check(r.held === true && typeof r.paddleId === "string" && !r.orderId, `${n}: test-card paddle held immediately (${r.error ?? r.paddleId})`);
+  }
+  let st = await state();
+  for (const p of st.paddles) {
+    check(p.status === "held" && isReal(p.authorizationId) && isReal(p.orderId), `#${p.number} ${p.name}: real sandbox auth ${p.authorizationId} (order ${p.orderId})`);
+  }
+  const auths = Object.fromEntries(st.paddles.map((p) => [p.id, p.authorizationId]));
+
+  // Lot 1: pizza. Agent competes (cap $70 from its instruction), Marcus wins at $75.
+  const pizza = "lot-pizza";
+  await api("POST", "/api/lot/start", { lotId: pizza });
+  let lot;
+  for (let k = 0; k < 40; k++) {
+    await sleep(250);
+    lot = await lotOf(pizza);
+    if (lot.highPaddleId) break;
+  }
+  check(lot.highPaddleId === agent.paddleId, `agent opened bidding at $${lot.highBid}`);
+  check((await bid(dana.paddleId, pizza, nextBid(lot))).ok === true, "Dana outbids agent");
+  for (let k = 0; k < 40; k++) {
+    await sleep(250);
+    lot = await lotOf(pizza);
+    if (lot.highPaddleId === agent.paddleId) break;
+  }
+  check((await bid(marcus.paddleId, pizza, 75)).ok === true, "Marcus jumps to $75");
+  await sleep(2500);
+  lot = await runUntilClosed(pizza);
+  check(lot.status === "sold" && lot.winnerPaddleId === marcus.paddleId && lot.finalPrice === 75, `pizza SOLD to Marcus for $${lot.finalPrice}`);
+
+  // Lot 2: cabin. Priya wins at $250.
+  const cabin = "lot-cabin";
+  await api("POST", "/api/lot/start", { lotId: cabin });
+  check((await bid(priya.paddleId, cabin, 200)).ok === true, "Priya opens cabin at $200");
+  check((await bid(dana.paddleId, cabin, 225)).ok === true, "Dana $225");
+  check((await bid(priya.paddleId, cabin, 250)).ok === true, "Priya $250");
+  lot = await runUntilClosed(cabin);
+  check(lot.status === "sold" && lot.winnerPaddleId === priya.paddleId && lot.finalPrice === 250, `cabin SOLD to Priya for $${lot.finalPrice}`);
+
+  // Close: real captures, voids, payout, receipts.
+  const t0 = Date.now();
+  const closed = await api("POST", "/api/close");
+  console.log(`  ..   close took ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  check(closed.status === "closed", "close -> status closed");
+  const { paddles, lots, ledger, totals, receipts } = closed;
+  const wonBy = (pid) => lots.filter((l) => l.status === "sold" && l.winnerPaddleId === pid).reduce((s, l) => s + l.finalPrice, 0);
+  for (const p of paddles) {
+    const caps = ledger.filter((r) => r.kind === "captured" && r.paddleId === p.id && r.status !== "FAILED");
+    const voids = ledger.filter((r) => r.kind === "voided" && r.paddleId === p.id && r.status !== "FAILED");
+    if (wonBy(p.id) > 0) {
+      const c = caps[0];
+      check(caps.length === 1 && c.amount === wonBy(p.id) && c.amount < p.holdAmount && isReal(c.paypalId) && c.status === "COMPLETED",
+        `#${p.number} ${p.name}: capture ${c?.paypalId} $${c?.amount} < hold $${p.holdAmount}, ${c?.status}`);
+      const a = await ppGet(`/v2/payments/authorizations/${auths[p.id]}`);
+      if (a) check(["CAPTURED", "PARTIALLY_CAPTURED"].includes(a.status), `  PayPal says auth ${auths[p.id]} is ${a.status}`);
+    } else {
+      check(caps.length === 0 && voids.length === 1 && voids[0].paypalId === auths[p.id] && p.status === "voided", `#${p.number} ${p.name}: VOIDED ${voids[0]?.paypalId}`);
+      const a = await ppGet(`/v2/payments/authorizations/${auths[p.id]}`);
+      if (a) check(a.status === "VOIDED", `  PayPal says auth ${auths[p.id]} is ${a.status}`);
+    }
+  }
+  const payout = ledger.find((r) => r.kind === "payout");
+  check(payout && isReal(payout.paypalId) && payout.status !== "FAILED" && payout.amount === totals.captured, `payout batch ${payout?.paypalId} $${payout?.amount} ${payout?.status}`);
+  if (payout && isReal(payout.paypalId)) {
+    const b = await ppGet(`/v1/payments/payouts/${payout.paypalId}`);
+    if (b) console.log(`  ..   PayPal payout batch status now: ${b.batch_header?.batch_status ?? JSON.stringify(b)}`);
+  }
+  const winners = paddles.filter((p) => wonBy(p.id) > 0);
+  check(receipts.length === winners.length && receipts.every((r) => r.text.length > 40), `${receipts.length} receipts generated`);
+  for (const r of ledger.filter((x) => x.kind === "receipt")) {
+    check(r.status !== "FAILED", `receipt ${r.paypalId ?? "(no invoice)"} ${r.status}${r.note ? ` (${r.note})` : ""}`);
+    if (r.paypalId) {
+      const inv = await ppGet(`/v2/invoicing/invoices/${r.paypalId}`);
+      if (inv) console.log(`  ..   PayPal invoice ${r.paypalId} status: ${inv.status ?? JSON.stringify(inv)}`);
+    }
+  }
+  check(totals.held === 0 && totals.paidOut === totals.captured, `totals: captured $${totals.captured}, released $${totals.voided}, paid out $${totals.paidOut}`);
+
+  const again = await api("POST", "/api/close");
+  check(again.ledger.length === ledger.length, "second close moves no money");
+
+  console.log("\nLedger:");
+  for (const r of again.ledger) {
+    const p = paddles.find((x) => x.id === r.paddleId);
+    console.log(`  ${r.kind.padEnd(10)} ${(p ? `#${p.number} ${p.name}` : "treasurer").padEnd(20)} $${String(r.amount).padStart(7)}  ${r.status.padEnd(14)} ${r.paypalId ?? ""}${r.note ? `  (${r.note})` : ""}`);
+  }
+  console.log("Receipt sample:\n" + receipts[0]?.text.split("\n").map((l) => "  | " + l).join("\n"));
+  console.log(failures ? `\n${failures} check(s) FAILED` : "\nALL CHECKS PASSED");
+  process.exit(failures ? 1 : 0);
+}
+
+main().catch((e) => {
+  console.error("ERROR", e.message);
+  process.exit(2);
+});

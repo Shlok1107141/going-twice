@@ -89,7 +89,7 @@ export function templateLine(kind: GusEvent, c: GusContext): string {
 const SYSTEM =
   "You are Gus, the warm, funny, slightly over-caffeinated volunteer auctioneer at an elementary school charity gala. " +
   "Keep it school-appropriate and kind: tease the room, never a person; no mention of money moving, cards or fees. " +
-  "Reply with ONE spoken follow-up line of at most 18 words. No quotes, no emoji, no stage directions.";
+  "Reply with exactly ONE short spoken line (at most 18 words) to be read aloud. Plain text only: no markdown, no lists, no quotes, no emoji, no stage directions.";
 
 /**
  * Say something now. Returns the template line (already on the caption). For lively events,
@@ -105,7 +105,8 @@ export function say(kind: GusEvent, c: GusContext): string {
       `Next bid: ${money(c.next) || "-"}. ${c.extra ?? ""}\nYou just said: "${line}"\nAdd one short follow-up line.`;
     void callClaude({ system: SYSTEM, user, maxTokens: 80, timeoutMs: 4000 })
       .then((reply) => {
-        const clean = reply?.replace(/^["']|["']$/g, "").split("\n")[0].trim();
+        const first = reply?.split("\n").map((l) => l.trim()).find(Boolean);
+        const clean = first?.replace(/^["']|["']$/g, "").trim();
         if (clean && clean.length <= 200 && getState().caption.ts === ts) setCaption(clean);
       })
       .finally(() => {

@@ -43,10 +43,17 @@ async function callGemini(
       .join("")
       .trim();
     if (!text) return null;
+    console.log(`[ai] provider=gemini model=${model} ok`);
     if (text.includes("{")) return text; // JSON reply: leave as is
-    // Plain spoken line: keep the first line only, drop markdown and stage directions.
-    const first = text.split("\n").map((s) => s.trim()).find(Boolean) ?? "";
-    const clean = first.replace(/[*_`]/g, "").replace(/^["“]|["”]$/g, "").trim();
+    // Plain text: drop markdown emphasis/headings. Callers that need one line (Gus) take the
+    // first non-empty line themselves; receipts keep every line.
+    const clean = text
+      .split("\n")
+      .map((l) => l.replace(/[*_`]/g, "").replace(/^#+\s*/, "").trim())
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .replace(/^["“]|["”]$/g, "")
+      .trim();
     return clean || null;
   } catch (e) {
     console.error("[gemini]", (e as Error).name === "AbortError" ? "timeout" : (e as Error).message);
@@ -100,6 +107,7 @@ export async function callClaude(args: {
       .map((b) => b.text ?? "")
       .join("")
       .trim();
+    if (text) console.log(`[ai] provider=anthropic model=${claudeModel()} ok`);
     return text || null;
   } catch (e) {
     console.error("[claude]", (e as Error).name === "AbortError" ? "timeout" : (e as Error).message);
