@@ -21,6 +21,7 @@ import {
   type State,
 } from "./store";
 import { currentRoom } from "./room";
+import { settle } from "@/lib/settlement";
 
 export class EngineError extends Error {
   constructor(public status: number, message: string) {
@@ -406,7 +407,7 @@ export function close(): Promise<State> {
   const room = currentRoom();
   let run = closing.get(room);
   if (!run) {
-    run = doClose().finally(() => {
+    run = settle({ inProcess: doClose, hammerOpenLots: () => { for (const lot of getState().lots) if (lot.status === "open") hammerLot(lot); } }).finally(() => {
       closing.delete(room);
     });
     closing.set(room, run);

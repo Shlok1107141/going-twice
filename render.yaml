@@ -1,4 +1,5 @@
-# Render Blueprint for Going Twice (single web service; in-memory state, so keep ONE instance).
+# Render Blueprint for Going Twice: one web service (in-memory state, so keep ONE instance) plus a
+# Render Workflow service that runs auction settlement (see docs/WORKFLOWS.md).
 # Secrets are sync:false: set them in the Render dashboard. NEXT_PUBLIC_* is inlined at build
 # time, so set it before the first deploy.
 services:
@@ -36,4 +37,29 @@ services:
       - key: APP_BASE_URL
         sync: false
       - key: DEMO_MODE
+        sync: false
+      # Render Workflows (optional; unset = settle in-process, as in local/demo mode)
+      - key: RENDER_WORKFLOWS
+        value: "1"
+      - key: RENDER_WORKFLOW_SLUG
+        value: going-twice-settlement # = the workflow service name below
+      - key: RENDER_API_KEY # Account Settings > API Keys
+        sync: false
+
+  # Settlement tasks: captureWinner / voidHold / sendPayout / issueReceipt, orchestrated by settleAuction.
+  # Workflows take per-task compute plans in code (workflows/tasks.ts), so there is no `plan` here.
+  - type: workflow
+    name: going-twice-settlement
+    runtime: node
+    region: oregon # required for workflows; keep it equal to the web service's region
+    buildCommand: npm ci
+    startCommand: npx tsx workflows/index.ts
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: PAYPAL_ENV
+        value: sandbox
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
         sync: false
