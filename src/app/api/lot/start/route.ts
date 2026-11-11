@@ -1,7 +1,8 @@
+import { withRoom } from "@/lib/auction/room";
 import { startLot } from "@/lib/auction/engine";
 import { bad, fail, readJson, str } from "@/lib/auction/http";
 
-export async function POST(req: Request) {
+async function handle(req: Request) {
   const lotId = str((await readJson(req)).lotId, 64);
   if (!lotId) return bad("lotId is required");
   try {
@@ -10,3 +11,5 @@ export async function POST(req: Request) {
     return fail(e);
   }
 }
+
+export const POST = (req: Request) => withRoom(req, () => handle(req));

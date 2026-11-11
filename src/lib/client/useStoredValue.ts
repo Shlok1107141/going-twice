@@ -1,5 +1,6 @@
 "use client";
 
+import { roomParam } from "./api";
 import { useCallback, useSyncExternalStore } from "react";
 
 const listeners = new Set<() => void>();
@@ -22,7 +23,10 @@ function read(key: string): string | null {
 }
 
 /** localStorage-backed string. `value` is null on the server and when unset; `ready` is false until hydrated. */
-export function useStoredValue(key: string) {
+export function useStoredValue(baseKey: string) {
+  // Scoped per room so a paddle id from one room never resolves to another room's paddle.
+  const room = roomParam();
+  const key = room ? `${baseKey}:${room.toUpperCase()}` : baseKey;
   const value = useSyncExternalStore(
     subscribe,
     () => read(key),

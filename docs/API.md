@@ -20,7 +20,7 @@ type State = { status: 'lobby'|'live'|'closed'; demoMode: boolean; testCards?: b
 ## Endpoints
 | Method + path | Body | Response |
 |---|---|---|
-| GET `/api/state` | – | `State` (UI polls every 1s; stage may poll 700ms) |
+| GET `/api/state` (all endpoints accept `?room=CODE`, see Rooms) | – | `State` (UI polls every 1s; stage may poll 700ms) |
 | POST `/api/reset` | – | `State` (fresh demo auction with 3 lots) |
 | POST `/api/paddle` | `{name, holdAmount, testCard?, email?}` | live: `{paddleId, orderId}` (client then renders PayPal buttons with that order); live + `testCard:true` (sandbox only): `{paddleId, held:true}`; demo: `{paddleId, held:true}` |
 | POST `/api/paddle/[id]/authorize` | `{orderId}` | `{paddle}` after server calls authorize; sets status `held` |
@@ -40,3 +40,16 @@ Idempotency: `/api/close` must be safe to call twice (second call returns curren
 - Stage plays `state.caption.text` aloud with `speechSynthesis` when `caption.ts` changes (user must click "Start sound" once), and always shows captions.
 - Paddle view stores `paddleId` in `localStorage` key `gt.paddleId`.
 - Next bid amount shown = `max(startPrice, highBid + increment)`.
+
+## Rooms
+Every request runs in an isolated auction **room**, chosen by `?room=CODE` on the URL (or an `x-gt-room` header). `CODE` is 1-12 alphanumeric characters, case-insensitive (canonicalised to upper case); missing or invalid means `MAIN`. Each room has its own state, ids, ledger and persistence file (`.data/state-<ROOM>.json`); up to 200 rooms stay in memory (least recently used is evicted, but stays on disk). Pages forward their own `?room=` on every API call automatically (`src/lib/client/api.ts`, `useAuctionState.ts`), the stage QR encodes `/paddle?room=CODE`, and the paddle id in localStorage is scoped per room.
+
+- `GET /api/room/new` returns `{room}`, a fresh random 6-character code. The landing page's "Start your own room" button uses it and opens `/admin?room=CODE`.
+- Server side: wrap every route handler in `withRoom(req, () => ...)` from `@/lib/auction/room`; engine and store functions then read `currentRoom()` implicitly (AsyncLocalStorage, which also follows timers and promises started inside). Use `runInRoom(code, fn)` when there is no request.
+- `POST /api/webhooks/paypal` has no room: the server looks up which room's ledger holds the referenced authorization/capture/payout/invoice id (global id-to-room index, with a scan of persisted rooms as fallback) and applies the event there. Events for unknown ids are ignored.
+
+## Email on test-card paddles
+`email` (optional, `POST /api/paddle` and `/api/agent`) is the address for the PayPal invoice receipt. The `/paddle` registration form has an optional "Email for your receipt" field. When `testCard:true` is used in live sandbox mode (`PAYPAL_ENV=sandbox`) and no email is given, the server assigns the next sandbox buyer email round-robin from env `SANDBOX_BUYER_1..3` (format `email:password`; only the part before the first colon is used, passwords are never stored or exposed), so receipt invoices are created.
+
+## Gemini resilience
+Short auctioneer lines use `GEMINI_FAST_MODEL` (default `gemini-2.5-flash-lite`); other calls use `GEMINI_MODEL`. On HTTP 429 the call retries once after 1.2 s, then callers fall back to scripted text. A global limiter allows at most 12 Gemini calls per minute. The Anthropic path is unchanged.

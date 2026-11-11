@@ -1,7 +1,8 @@
+import { withRoom } from "@/lib/auction/room";
 import { tick } from "@/lib/auction/engine";
 import { fail } from "@/lib/auction/http";
 
-export async function POST() {
+async function handle() {
   try {
     tick();
     return Response.json({ ok: true });
@@ -9,3 +10,5 @@ export async function POST() {
     return fail(e);
   }
 }
+
+export const POST = (req: Request) => withRoom(req, () => handle());

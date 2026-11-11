@@ -1,17 +1,28 @@
-// In-memory auction store on globalThis (survives Next dev HMR), with optional write-behind
-// JSON persistence in .data/state.json so a Render restart doesn't wipe a demo.
-// Disable persistence with PERSIST=0. Single instance only.
+// In-memory auction stores, one per room (see room.ts), on globalThis (survives Next dev HMR),
+// with optional write-behind JSON persistence in .data/state-<ROOM>.json so a Render restart
+// doesn't wipe a demo. Disable persistence with PERSIST=0. Single instance only.
+// Up to MAX_ROOMS rooms are kept in memory; the least recently used is evicted (still on disk).
 import fs from "node:fs";
 import path from "node:path";
+import { currentRoom } from "./room";
 import type { AuctionEvent, Internal, LedgerRow, Lot, State } from "./types";
 
 export * from "./types";
 
-const DATA_FILE = path.join(process.cwd(), ".data", "state.json");
+const DATA_DIR = path.join(process.cwd(), ".data");
+const dataFile = (room: string) => path.join(DATA_DIR, `state-${room}.json`);
 const MAX_EVENTS = 50;
+const MAX_ROOMS = 200;
 
 type Store = { state: State; internal: Internal };
-const g = globalThis as unknown as { __gtStore?: Store; __gtSaveTimer?: ReturnType<typeof setTimeout> };
+const g = globalThis as unknown as {
+  __gtRooms?: Map<string, Store>; // insertion order = recency (re-inserted on access)
+  __gtSaveTimers?: Map<string, ReturnType<typeof setTimeout>>;
+  __gtIdIndex?: Map<string, string>; // PayPal id -> room (webhooks carry no room)
+};
+const rooms = () => (g.__gtRooms ??= new Map());
+const timers = () => (g.__gtSaveTimers ??= new Map());
+const idIndex = () => (g.__gtIdIndex ??= new Map());
 
 export function isDemoMode(): boolean {
   return process.env.DEMO_MODE === "1" || !process.env.PAYPAL_CLIENT_ID;
@@ -69,26 +80,72 @@ function freshStore(): Store {
   };
 }
 
-function load(): Store {
+function indexLedger(room: string, st: Store): void {
+  for (const r of st.state.ledger) if (r.paypalId) idIndex().set(r.paypalId, room);
+}
+
+function readFile(file: string): Store | null {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(file, "utf8")) as Store;
+    return parsed?.state?.lots && parsed?.internal?.auctionId ? parsed : null;
+  } catch {
+    return null; // no file / unreadable
+  }
+}
+
+function load(room: string): Store {
   if (persistEnabled()) {
-    try {
-      const raw = fs.readFileSync(DATA_FILE, "utf8");
-      const parsed = JSON.parse(raw) as Store;
-      if (parsed?.state?.lots && parsed?.internal?.auctionId) {
-        parsed.state.demoMode = isDemoMode();
-        parsed.state.testCards = testCardsAllowed();
-        return parsed;
-      }
-    } catch {
-      // no file / unreadable: start fresh
+    const parsed = readFile(dataFile(room));
+    if (parsed) {
+      parsed.state.demoMode = isDemoMode();
+      parsed.state.testCards = testCardsAllowed();
+      return parsed;
     }
   }
   return freshStore();
 }
 
 function store(): Store {
-  if (!g.__gtStore) g.__gtStore = load();
-  return g.__gtStore;
+  const room = currentRoom();
+  const m = rooms();
+  let st = m.get(room);
+  if (st) {
+    m.delete(room); // move to most-recent position
+  } else {
+    st = load(room);
+    indexLedger(room, st);
+  }
+  m.set(room, st);
+  while (m.size > MAX_ROOMS) {
+    const oldest = m.keys().next().value as string;
+    flush(oldest);
+    m.delete(oldest);
+  }
+  return st;
+}
+
+/** Room that holds a PayPal id (authorization / capture / payout batch / invoice), if any. */
+export function roomForPaypalId(...ids: Array<string | undefined>): string | undefined {
+  for (const id of ids) {
+    const hit = id ? idIndex().get(id) : undefined;
+    if (hit) return hit;
+  }
+  if (persistEnabled()) {
+    // Not in memory (evicted or after a restart): scan persisted rooms.
+    try {
+      for (const f of fs.readdirSync(DATA_DIR)) {
+        const m = /^state-([A-Z0-9]{1,12})\.json$/.exec(f);
+        if (!m || rooms().has(m[1])) continue;
+        const st = readFile(path.join(DATA_DIR, f));
+        if (!st) continue;
+        indexLedger(m[1], st);
+        for (const id of ids) if (id && idIndex().get(id) === m[1]) return m[1];
+      }
+    } catch {
+      // no data dir
+    }
+  }
+  return undefined;
 }
 
 export function getState(): State {
@@ -101,9 +158,12 @@ export function getInternal(): Internal {
 
 /** Fresh auction (new auctionId, so PayPal idempotency keys never collide across rehearsals). */
 export function resetStore(): State {
-  g.__gtStore = freshStore();
+  const fresh = freshStore();
+  const room = currentRoom();
+  rooms().delete(room);
+  rooms().set(room, fresh);
   save();
-  return g.__gtStore.state;
+  return fresh.state;
 }
 
 export function nextId(prefix: string): string {
@@ -112,20 +172,27 @@ export function nextId(prefix: string): string {
   return `${prefix}-${i.seq}`;
 }
 
-/** Write-behind persistence (coalesced). Call after every mutation. */
+function flush(room: string): void {
+  const t = timers().get(room);
+  if (t) clearTimeout(t);
+  timers().delete(room);
+  const st = rooms().get(room);
+  if (!st || !persistEnabled()) return;
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    const tmp = dataFile(room) + ".tmp";
+    fs.writeFileSync(tmp, JSON.stringify(st));
+    fs.renameSync(tmp, dataFile(room));
+  } catch (e) {
+    console.error("[store] persist failed:", (e as Error).message);
+  }
+}
+
+/** Write-behind persistence (coalesced per room). Call after every mutation. */
 export function save(): void {
-  if (!persistEnabled() || g.__gtSaveTimer) return;
-  g.__gtSaveTimer = setTimeout(() => {
-    g.__gtSaveTimer = undefined;
-    try {
-      fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
-      const tmp = DATA_FILE + ".tmp";
-      fs.writeFileSync(tmp, JSON.stringify(store()));
-      fs.renameSync(tmp, DATA_FILE);
-    } catch (e) {
-      console.error("[store] persist failed:", (e as Error).message);
-    }
-  }, 150);
+  const room = currentRoom();
+  if (!persistEnabled() || timers().has(room)) return;
+  timers().set(room, setTimeout(() => flush(room), 150));
 }
 
 export function pushEvent(e: Omit<AuctionEvent, "id" | "ts">): AuctionEvent {
@@ -150,6 +217,7 @@ export function addLedger(row: Omit<LedgerRow, "id" | "ts">): LedgerRow {
   const s = getState();
   const r: LedgerRow = { id: nextId("led"), ts: Date.now(), ...row };
   s.ledger.push(r);
+  if (r.paypalId) idIndex().set(r.paypalId, currentRoom());
   recomputeTotals();
   return r;
 }

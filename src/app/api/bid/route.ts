@@ -1,8 +1,9 @@
+import { withRoom } from "@/lib/auction/room";
 import { placeBid } from "@/lib/auction/engine";
 import { readJson, str } from "@/lib/auction/http";
 
 // Rule rejections come back as 200 {ok:false, error}; malformed requests as 400.
-export async function POST(req: Request) {
+async function handle(req: Request) {
   const b = await readJson(req);
   const paddleId = str(b.paddleId, 64);
   const lotId = str(b.lotId, 64);
@@ -17,3 +18,5 @@ export async function POST(req: Request) {
     return Response.json({ ok: false, error: "Something went wrong" }, { status: 500 });
   }
 }
+
+export const POST = (req: Request) => withRoom(req, () => handle(req));

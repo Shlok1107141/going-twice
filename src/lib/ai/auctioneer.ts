@@ -103,7 +103,7 @@ export function say(kind: GusEvent, c: GusContext): string {
     const user =
       `Event: ${kind}. Lot: ${c.lot ?? "-"}. Bidder: ${c.name ?? "-"}. Amount: ${money(c.amount) || "-"}. ` +
       `Next bid: ${money(c.next) || "-"}. ${c.extra ?? ""}\nYou just said: "${line}"\nAdd one short follow-up line.`;
-    void callClaude({ system: SYSTEM, user, maxTokens: 80, timeoutMs: 4000 })
+    void callClaude({ system: SYSTEM, user, maxTokens: 80, timeoutMs: 4000, fast: true })
       .then((reply) => {
         const first = reply?.split("\n").map((l) => l.trim()).find(Boolean);
         const clean = first?.replace(/^["']|["']$/g, "").trim();
