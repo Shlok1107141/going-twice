@@ -191,8 +191,99 @@ async function main() {
   const rn = await (await fetch(BASE + "/api/room/new")).json();
   check(/^[A-Z0-9]{1,12}$/.test(rn.room ?? ""), `GET /api/room/new -> ${rn.room}`);
 
+  // Charity stays the default hero, unchanged by auction types.
+  check(closed.auctionType === "charity" && closed.settings?.premiumPct === 0, "default auction type is charity with no premium");
+  check(ledger.filter((r) => r.kind === "captured").every((r) => !/premium/i.test(r.note ?? "")), "charity captures carry no premium");
+
+  await typeScenarios();
+
   console.log(failures ? `\n${failures} check(s) FAILED` : "\nALL CHECKS PASSED");
   process.exit(failures ? 1 : 0);
+}
+
+// ---- auction types: each scenario runs in its own room
+async function typeScenarios() {
+  const R = (suffix) => ROOM + suffix;
+  const call = async (room, method, path, body) => {
+    const res = await fetch(BASE + inRoom(path, room), { method, headers: body ? { "content-type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
+    const json = await res.json().catch(() => ({}));
+    return { status: res.status, ...json };
+  };
+  const tp = async (room, name, hold) => (await call(room, "POST", "/api/paddle", { name, holdAmount: hold })).paddleId;
+  const b = (room, paddleId, lotId, amount) => call(room, "POST", "/api/bid", { paddleId, lotId, amount });
+  const start = (room, lotId) => call(room, "POST", "/api/lot/start", { lotId });
+  const hammer = (room, lotId) => call(room, "POST", "/api/lot/hammer", { lotId });
+
+  console.log("\nAuction types");
+  const bad1 = await call(R("B1"), "POST", "/api/auction/type", { type: "bogus" });
+  check(bad1.status === 400, "unknown auction type -> 400");
+  const bad2 = await call(R("B1"), "POST", "/api/auction/type", { type: "collectibles", settings: { premiumPct: 99 } });
+  check(bad2.status === 400, "premium out of range -> 400");
+
+  // ---- collectibles: buyer's premium on top; a bid must fit hammer x (1 + premium) inside the hold
+  const C = R("C");
+  let st = await call(C, "POST", "/api/auction/type", { type: "collectibles" });
+  check(st.auctionType === "collectibles" && st.settings.premiumPct === 10 && st.status === "lobby" && st.lots.length === 4, "collectibles: type switched, 10% premium, 4 sample lots");
+  const ca = await tp(C, "Alex", 300);
+  const cb = await tp(C, "Bea", 500);
+  await start(C, "lot-ceramic");
+  check((await b(C, ca, "lot-ceramic", 90)).ok === true, "collectibles: Alex opens at $90");
+  check((await b(C, cb, "lot-ceramic", 100)).ok === true, "collectibles: Bea $100");
+  const over = await b(C, ca, "lot-ceramic", 280);
+  check(over.ok === false && /premium/i.test(over.error), `collectibles: $280 hammer + 10% = $308 > $300 hold rejected (${over.error})`);
+  check((await b(C, ca, "lot-ceramic", 270)).ok === true, "collectibles: $270 + 10% = $297 fits the $300 hold");
+  await hammer(C, "lot-ceramic");
+  await start(C, "lot-print");
+  check((await b(C, cb, "lot-print", 200)).ok === true, "collectibles: Bea $200 on the print");
+  await hammer(C, "lot-print");
+  const cc = await call(C, "POST", "/api/close");
+  const capA = cc.ledger.find((r) => r.kind === "captured" && r.paddleId === ca);
+  const capB = cc.ledger.find((r) => r.kind === "captured" && r.paddleId === cb);
+  const holdA = cc.paddles.find((p) => p.id === ca).holdAmount;
+  check(capA.amount === 297 && capA.amount <= holdA, `collectibles: Alex captured $${capA.amount} = $270 x 1.10, within $${holdA} hold`);
+  check(capB.amount === 220 && /premium/i.test(capB.note), `collectibles: Bea captured $${capB.amount} = $200 x 1.10 (${capB.note})`);
+  check(cc.totals.captured === 517 && cc.totals.paidOut === 517, "collectibles: captured and paid out $517 = $470 hammer + $47 premium");
+  const cpay = cc.ledger.filter((r) => r.kind === "payout");
+  check(cpay.length === 1 && cpay[0].amount === 517, "collectibles: one payout line to the house");
+  check(
+    cc.receipts.length === 2 && cc.receipts.every((r) => /sales receipt/i.test(r.text) && /buyer's premium/i.test(r.text) && !/fair market|FMV/i.test(r.text)),
+    "collectibles: sales receipts show hammer, premium, total (no FMV)",
+  );
+  const cc2 = await call(C, "POST", "/api/close");
+  check(cc2.ledger.length === cc.ledger.length && JSON.stringify(cc2.totals) === JSON.stringify(cc.totals), "collectibles: second close moves no money");
+
+  // ---- estate: consignment payout split in one batch
+  const E = R("E");
+  st = await call(E, "POST", "/api/auction/type", {
+    type: "estate",
+    settings: { organizerEmail: "house.test@example.com", consignorEmails: ["hendricks.test@example.com", "alvarez.test@example.com"] },
+  });
+  check(st.auctionType === "estate" && st.settings.commissionPct === 15 && st.settings.premiumPct === 0, "estate: type switched, 15% commission");
+  check(st.lots.every((l) => l.consignor) && !JSON.stringify(st).includes("hendricks.test@"), "estate: lots have consignors; emails are not exposed in state");
+  const ea = await tp(E, "Eli", 1000);
+  await start(E, "lot-sideboard");
+  check((await b(E, ea, "lot-sideboard", 200)).ok === true, "estate: Eli $200 on the sideboard (Hendricks)");
+  await hammer(E, "lot-sideboard");
+  await start(E, "lot-silver");
+  check((await b(E, ea, "lot-silver", 300)).ok === true, "estate: Eli $300 on the silver (Alvarez)");
+  await hammer(E, "lot-silver");
+  const ec = await call(E, "POST", "/api/close");
+  const epay = ec.ledger.filter((r) => r.kind === "payout");
+  const sum = Math.round(epay.reduce((t, r) => t + r.amount, 0) * 100) / 100;
+  check(ec.totals.captured === 500 && sum === 500 && ec.totals.paidOut === 500, `estate: payout items sum $${sum} = captured $${ec.totals.captured}`);
+  check(epay.length === 3 && new Set(epay.map((r) => r.paypalId)).size === 1, "estate: one payout batch with 3 items (2 consignors + house)");
+  const hend = epay.find((r) => /hendricks\.test@/.test(r.note));
+  const alv = epay.find((r) => /alvarez\.test@/.test(r.note));
+  const house = epay.find((r) => /to house/.test(r.note));
+  check(hend?.amount === 170 && alv?.amount === 255 && house?.amount === 75, `estate: consignors $${hend?.amount} + $${alv?.amount} (85%), house $${house?.amount} (15%)`);
+  check(epay.every((r) => /consignor 85% \/ house 15%/.test(r.note)), "estate: ledger notes show the split");
+  check(ec.receipts.length === 1 && /consignor credit/i.test(ec.receipts[0].text) && /sales receipt/i.test(ec.receipts[0].text), "estate: sales receipt shows the consignor credit");
+  const ec2 = await call(E, "POST", "/api/close");
+  check(ec2.ledger.length === ec.ledger.length, "estate: second close moves no money");
+
+  // ---- farm: larger increments, per-head units
+  st = await call(R("F"), "POST", "/api/auction/type", { type: "farm" });
+  check(st.auctionType === "farm" && st.lots.every((l) => l.increment >= 50) && st.lots.some((l) => l.unit === "head"), "farm: larger increments, per-head lots");
 }
 
 main().catch((e) => {

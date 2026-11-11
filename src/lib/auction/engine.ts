@@ -3,7 +3,7 @@
 import * as pp from "@/lib/paypal";
 import { say, money } from "@/lib/ai/auctioneer";
 import { decideAgentBid } from "@/lib/ai/agent";
-import { writeReceipt, SCHOOL_NAME, type ReceiptItem } from "@/lib/ai/receipt";
+import { writeReceipt, SCHOOL_NAME, type ReceiptItem, type SalesContext } from "@/lib/ai/receipt";
 import {
   addLedger,
   getInternal,
@@ -16,10 +16,13 @@ import {
   save,
   setCaption,
   testCardsAllowed,
+  type AuctionSettings,
+  type AuctionType,
   type Lot,
   type Paddle,
   type State,
 } from "./store";
+import { grossCents, isAuctionType, typeConfig } from "./auctionTypes";
 import { currentRoom } from "./room";
 
 export class EngineError extends Error {
@@ -63,8 +66,62 @@ function findPaddle(paddleId: string): Paddle {
 
 // ---------------------------------------------------------------- setup
 
+/** Fresh auction in the same room; keeps the room's auction type, settings and organizer email. */
 export function reset(): State {
-  return resetStore();
+  const s = getState();
+  return resetStore({ type: s.auctionType, settings: s.settings, organizerEmail: getInternal().payout?.organizer });
+}
+
+export type TypeInput = {
+  type: unknown;
+  premiumPct?: unknown;
+  commissionPct?: unknown;
+  organizerEmail?: unknown;
+  consignorEmails?: unknown;
+};
+
+const EMAIL_RE = /^[^\s@,;<>]{1,64}@[^\s@,;<>]{1,190}\.[^\s@,;<>]{2,}$/;
+
+function pct(v: unknown, label: string, max: number): number | undefined {
+  if (v === undefined || v === null || v === "") return undefined;
+  if (typeof v !== "number" || !Number.isFinite(v) || v < 0 || v > max || Math.abs(Math.round(v * 100) - v * 100) > 1e-6) {
+    throw new EngineError(400, `${label} must be a number from 0 to ${max} with at most 2 decimals`);
+  }
+  return v;
+}
+
+function email(v: unknown, label: string): string | undefined {
+  if (v === undefined || v === null || v === "") return undefined;
+  if (typeof v !== "string" || !EMAIL_RE.test(v.trim())) throw new EngineError(400, `${label} must be a valid email address`);
+  return v.trim();
+}
+
+/** Switch the room to another auction type and reset it with that type's sample lots. */
+export function setAuctionType(input: TypeInput): State {
+  if (!isAuctionType(input.type)) throw new EngineError(400, "type must be one of charity, estate, collectibles, farm");
+  const type: AuctionType = input.type;
+  const cfg = typeConfig(type);
+  const settings: Partial<AuctionSettings> = {};
+  const premium = pct(input.premiumPct, "premiumPct", 50);
+  const commission = pct(input.commissionPct, "commissionPct", 60);
+  if (premium !== undefined && cfg.editable.premium) settings.premiumPct = premium;
+  if (commission !== undefined && cfg.editable.commission) settings.commissionPct = commission;
+  const organizerEmail = email(input.organizerEmail, "organizerEmail");
+  let consignorEmails: string[] | undefined;
+  if (input.consignorEmails !== undefined && cfg.editable.consignors) {
+    if (!Array.isArray(input.consignorEmails) || input.consignorEmails.length > 10) throw new EngineError(400, "consignorEmails must be a list of up to 10 emails");
+    consignorEmails = input.consignorEmails.map((e) => email(e, "consignorEmails")).filter((e): e is string => !!e);
+  }
+  const s = resetStore({ type, settings, organizerEmail, consignorEmails });
+  if (type !== "charity") {
+    setCaption(`Welcome to the ${cfg.stageLabel}! Grab a paddle and get those thumbs warmed up.`);
+  }
+  return s;
+}
+
+/** Lot facts Gus may weave into a line (consignor provenance, per-head quotes). */
+function lotCtx(lot: Lot) {
+  return { consignor: lot.consignor, unit: lot.unit, quantity: lot.quantity };
 }
 
 // Sandbox receipts: test-card paddles have no PayPal payer, so default to the next sandbox buyer
@@ -191,7 +248,7 @@ export function startLot(lotId: string): State {
   i.lastActivityAt = Date.now();
   i.stalled = false;
   pushEvent({ type: "system", text: `${lot.emoji} ${lot.title} is open at ${money(lot.startPrice)}.`, lotId: lot.id });
-  say("open", { lot: lot.title, amount: lot.startPrice });
+  say("open", { lot: lot.title, amount: lot.startPrice, ...lotCtx(lot) });
   triggerAgents(lot.id);
   return s;
 }
@@ -226,7 +283,11 @@ export function addLot(draft: LotDraft): Lot {
   };
   s.lots.push(lot);
   pushEvent({ type: "system", text: `New lot added: ${lot.title}, opening at ${money(lot.startPrice)}.`, lotId: lot.id });
-  setCaption(`Fresh off the donation table: ${lot.title}! Estimated at ${money(lot.fmv)}, opening at ${money(lot.startPrice)}.`);
+  setCaption(
+    s.auctionType === "charity"
+      ? `Fresh off the donation table: ${lot.title}! Estimated at ${money(lot.fmv)}, opening at ${money(lot.startPrice)}.`
+      : `New lot just in: ${lot.title}, opening at ${money(lot.startPrice)}.`,
+  );
   save();
   return lot;
 }
@@ -251,7 +312,16 @@ export function placeBid(paddleId: string, lotId: string, amountIn: number, sour
   if (cents(amount) < cents(min)) return { ok: false, error: `Bid must be at least ${money(min)}` };
 
   const own = lot.highPaddleId === p.id ? lot.highBid : 0;
-  if (cents(p.committed) - cents(own) + cents(amount) > cents(p.holdAmount)) {
+  // Hold must cover hammer plus buyer's premium (premiumPct is 0 for charity, so gross == hammer).
+  const premiumPct = s.settings?.premiumPct ?? 0;
+  const afterCents = cents(p.committed) - cents(own) + cents(amount);
+  if (grossCents(afterCents, premiumPct) > cents(p.holdAmount)) {
+    if (premiumPct > 0) {
+      const base = cents(p.committed) - cents(own);
+      let roomC = Math.max(0, Math.floor(((cents(p.holdAmount) - grossCents(base, premiumPct)) * 100) / (100 + premiumPct)));
+      while (roomC > 0 && grossCents(base + roomC, premiumPct) > cents(p.holdAmount)) roomC--;
+      return { ok: false, error: `That would go over your ${money(p.holdAmount)} hold once the ${premiumPct}% buyer's premium is added (room left: ${money(dollars(roomC))} hammer)` };
+    }
     const room = dollars(cents(p.holdAmount) - cents(p.committed) + cents(own));
     return { ok: false, error: `That would go over your ${money(p.holdAmount)} hold (room left: ${money(room)})` };
   }
@@ -279,7 +349,7 @@ export function placeBid(paddleId: string, lotId: string, amountIn: number, sour
     paddleId: p.id,
     lotId: lot.id,
   });
-  say(isAgent ? "agent-bid" : "bid", { lot: lot.title, name: p.name, amount, next });
+  say(isAgent ? "agent-bid" : "bid", { lot: lot.title, name: p.name, amount, next, ...lotCtx(lot) });
   save();
   if (!isAgent) triggerAgents(lot.id);
   return { ok: true };
@@ -299,16 +369,16 @@ export function tick(): void {
     if (elapsed >= 14) {
       lot.phase = "going-once";
       pushEvent({ type: "going-once", text: `${lot.title}: going once at ${money(ctx.amount)}.`, lotId: lot.id });
-      say("going-once", ctx);
+      say("going-once", { ...ctx, ...lotCtx(lot) });
     } else if (elapsed >= 8 && !i.stalled) {
       i.stalled = true;
       pushEvent({ type: "stall", text: `${lot.title} is waiting on a bid at ${money(ctx.amount)}.`, lotId: lot.id });
-      say("stall", ctx);
+      say("stall", { ...ctx, ...lotCtx(lot) });
     }
   } else if (lot.phase === "going-once" && elapsed >= 18) {
     lot.phase = "going-twice";
     pushEvent({ type: "going-twice", text: `${lot.title}: going twice at ${money(ctx.amount)}.`, lotId: lot.id });
-    say("going-twice", ctx);
+    say("going-twice", { ...ctx, ...lotCtx(lot) });
   } else if (lot.phase === "going-twice" && elapsed >= 22) {
     hammerLot(lot);
   }
@@ -332,7 +402,7 @@ function hammerLot(lot: Lot): void {
     lot.winnerPaddleId = lot.highPaddleId;
     lot.finalPrice = lot.highBid;
     pushEvent({ type: "sold", text: `SOLD: ${lot.title} to paddle #${w?.number} (${w?.name}) for ${money(lot.highBid)}.`, paddleId: w?.id, lotId: lot.id });
-    say("sold", { lot: lot.title, name: w?.name, amount: lot.highBid });
+    say("sold", { lot: lot.title, name: w?.name, amount: lot.highBid, ...lotCtx(lot) });
   } else {
     lot.status = "unsold";
     pushEvent({ type: "sold", text: `${lot.title} passed with no bids.`, lotId: lot.id });
@@ -422,6 +492,76 @@ function errMsg(e: unknown): string {
   return e instanceof Error ? e.message.slice(0, 300) : "unknown error";
 }
 
+type PayoutLine = { receiver?: string; cents: number; payNote: string; ledgerNote: string; house?: boolean };
+
+const pctText = (n: number) => `${Number.isInteger(n) ? n : n.toFixed(2).replace(/0+$/, "")}%`;
+
+/** Who gets paid what. Always sums to the captured total. Charity/collectibles/farm: one line to the organizer. */
+function payoutPlan(s: State, receiver: string | undefined, capturedCents: number): PayoutLine[] {
+  const cfg = typeConfig(s.auctionType);
+  if (cfg.payoutPlan !== "consignment") {
+    return [
+      {
+        receiver,
+        cents: capturedCents,
+        payNote: cfg.receiptKind === "sale" ? `Sale proceeds for ${cfg.orgName}` : `Auction proceeds for ${SCHOOL_NAME}`,
+        ledgerNote: `${cfg.receiptKind === "sale" ? "to organizer" : "to treasurer"}${receiver ? ` ${receiver}` : ""}`,
+        house: true,
+      },
+    ];
+  }
+  // Consignment: per sold lot, consignor gets hammer minus commission; the house keeps the rest
+  // (commission plus any buyer's premium, and lots with no consignor email).
+  const commissionPct = s.settings?.commissionPct ?? 0;
+  const consignors = getInternal().payout?.consignors ?? {};
+  const byEmail = new Map<string, { cents: number; lots: string[] }>();
+  for (const l of s.lots) {
+    const email = consignors[l.id];
+    const winner = s.paddles.find((p) => p.id === l.winnerPaddleId);
+    if (l.status !== "sold" || !email || winner?.status !== "captured") continue;
+    const hammerC = cents(l.finalPrice ?? 0);
+    const credit = hammerC - Math.round((hammerC * commissionPct) / 100);
+    const e = byEmail.get(email) ?? { cents: 0, lots: [] };
+    e.cents += credit;
+    e.lots.push(`${l.title} ${money(l.finalPrice)}`);
+    byEmail.set(email, e);
+  }
+  const split = `consignor ${pctText(100 - commissionPct)} / house ${pctText(commissionPct)}`;
+  const withPremium = (s.settings?.premiumPct ?? 0) > 0;
+  const lines: PayoutLine[] = [];
+  let consignorTotal = 0;
+  for (const [email, e] of byEmail) {
+    if (e.cents <= 0) continue;
+    consignorTotal += e.cents;
+    lines.push({
+      receiver: email,
+      cents: e.cents,
+      payNote: `Consignment proceeds (hammer minus ${pctText(commissionPct)} house commission): ${e.lots.join("; ")}`.slice(0, 300),
+      ledgerNote: `${split}: ${e.lots.join("; ")} to consignor ${email}`,
+    });
+  }
+  const houseC = capturedCents - consignorTotal;
+  if (houseC > 0) {
+    lines.push({
+      receiver,
+      cents: houseC,
+      payNote: `House share: ${pctText(commissionPct)} commission${withPremium ? " plus buyer's premium" : ""}`,
+      ledgerNote: `${split}: house commission${withPremium ? " + buyer's premium" : ""} to house${receiver ? ` ${receiver}` : ""}`,
+      house: true,
+    });
+  }
+  return lines;
+}
+
+function payoutEvent(s: State, plan: PayoutLine[], capturedCents: number): string {
+  const cfg = typeConfig(s.auctionType);
+  if (cfg.payoutPlan === "consignment") {
+    const houseC = plan.filter((x) => x.house).reduce((c, x) => c + x.cents, 0);
+    return `Paid out ${money(dollars(capturedCents))}: ${money(dollars(capturedCents - houseC))} to consignors, ${money(dollars(houseC))} to the house.`;
+  }
+  return cfg.receiptKind === "sale" ? `Sent ${money(dollars(capturedCents))} to the organizer.` : `Sent ${money(dollars(capturedCents))} to the PTA treasurer.`;
+}
+
 async function doClose(): Promise<State> {
   const s = getState();
   if (s.status === "closed") return s;
@@ -432,11 +572,15 @@ async function doClose(): Promise<State> {
   for (const lot of s.lots) if (lot.status === "open") hammerLot(lot);
   pushEvent({ type: "system", text: "Closing the auction: settling every paddle." });
   let failed = false;
+  const cfg = typeConfig(s.auctionType);
+  const premiumPct = s.settings?.premiumPct ?? 0;
+  const sale = cfg.receiptKind === "sale";
 
   // 1) One final capture per winner (sum of lots won), void everyone else. Sequential.
   for (const p of s.paddles) {
     if (p.status !== "held" || !p.authorizationId) continue;
-    const wonCents = wonBy(p).reduce((c, l) => c + cents(l.finalPrice ?? 0), 0);
+    const hammerCents = wonBy(p).reduce((c, l) => c + cents(l.finalPrice ?? 0), 0);
+    const wonCents = grossCents(hammerCents, premiumPct); // hammer + buyer's premium (== hammer for charity)
     if (wonCents > cents(p.holdAmount)) {
       // Cannot happen if bids went through placeBid; never over-capture.
       addLedger({ kind: "captured", paddleId: p.id, amount: dollars(wonCents), status: "FAILED", note: "won total exceeds hold; not captured" });
@@ -454,8 +598,8 @@ async function doClose(): Promise<State> {
             amount: pp.centsToAmount(wonCents),
             finalCapture: true,
             invoiceId: `GT-${i.auctionId}-${p.number}`,
-            noteToPayer: `Thank you for supporting ${SCHOOL_NAME}!`,
-            softDescriptor: "GOINGTWICE PTA",
+            noteToPayer: sale ? `Thank you for your purchase from ${cfg.orgName}!` : `Thank you for supporting ${SCHOOL_NAME}!`,
+            softDescriptor: cfg.softDescriptor,
           });
           id = cap.id;
           status = cap.status;
@@ -468,7 +612,7 @@ async function doClose(): Promise<State> {
         p.status = "captured";
         p.capturedAmount = amount;
         p.committed = 0;
-        addLedger({ kind: "captured", paddleId: p.id, amount, paypalId: id, status, note: `final capture; ${money(dollars(cents(p.holdAmount) - wonCents))} of hold released` });
+        addLedger({ kind: "captured", paddleId: p.id, amount, paypalId: id, status, note: `final capture${premiumPct > 0 ? `; hammer ${money(dollars(hammerCents))} + ${premiumPct}% buyer's premium ${money(dollars(wonCents - hammerCents))}` : ""}; ${money(dollars(cents(p.holdAmount) - wonCents))} of hold released` });
         pushEvent({ type: "system", text: `Captured ${money(amount)} from paddle #${p.number} (${p.name}).`, paddleId: p.id });
       } catch (e) {
         addLedger({ kind: "captured", paddleId: p.id, amount, status: "FAILED", note: errMsg(e) });
@@ -494,31 +638,32 @@ async function doClose(): Promise<State> {
     return s;
   }
 
-  // 2) One Payouts batch for the captured total.
+  // 2) One Payouts batch for the captured total (organizer, or consignors + house for consignment).
   recomputeTotals();
   const capturedCents = cents(s.totals.captured);
   if (!i.payoutDone && capturedCents > 0) {
     if (step) await sleep(step);
-    const receiver = process.env.TREASURER_PAYPAL_EMAIL || process.env.TREASURER_RECEIVER;
+    const receiver = i.payout?.organizer || process.env.TREASURER_PAYPAL_EMAIL || process.env.TREASURER_RECEIVER;
     try {
+      const plan = payoutPlan(s, receiver, capturedCents);
       let id = demoId("PAYOUT");
       let status = "SUCCESS";
       if (!demo) {
-        if (!receiver) throw new Error("TREASURER_PAYPAL_EMAIL is not set");
+        if (plan.some((x) => !x.receiver)) throw new Error("TREASURER_PAYPAL_EMAIL is not set");
         const batch = await pp.createPayoutBatch({
           senderBatchId: `close-${i.auctionId}`,
-          emailSubject: "Going Twice auction proceeds",
-          items: [{ recipientType: "EMAIL", receiver, amount: pp.centsToAmount(capturedCents), note: `Auction proceeds for ${SCHOOL_NAME}` }],
+          emailSubject: sale ? `${cfg.invoicerName} sale proceeds` : "Going Twice auction proceeds",
+          items: plan.map((x) => ({ recipientType: "EMAIL" as const, receiver: x.receiver as string, amount: pp.centsToAmount(x.cents), note: x.payNote })),
         });
         id = batch.batch_header.payout_batch_id;
         status = batch.batch_header.batch_status;
       }
       i.payoutDone = true;
-      addLedger({ kind: "payout", amount: dollars(capturedCents), paypalId: id, status, note: `to treasurer${receiver ? ` ${receiver}` : ""}` });
-      pushEvent({ type: "system", text: `Sent ${money(dollars(capturedCents))} to the PTA treasurer.` });
+      for (const x of plan) addLedger({ kind: "payout", amount: dollars(x.cents), paypalId: id, status, note: x.ledgerNote });
+      pushEvent({ type: "system", text: payoutEvent(s, plan, capturedCents) });
     } catch (e) {
       addLedger({ kind: "payout", amount: dollars(capturedCents), status: "FAILED", note: errMsg(e) });
-      pushEvent({ type: "system", text: "Payout to the treasurer failed. Close again to retry." });
+      pushEvent({ type: "system", text: cfg.payoutPlan === "consignment" ? "Payouts to the consignors failed. Close again to retry." : "Payout to the treasurer failed. Close again to retry." });
       return s;
     }
   } else {
@@ -530,7 +675,7 @@ async function doClose(): Promise<State> {
   const texts = await Promise.all(
     winners.map((p) => {
       const items: ReceiptItem[] = wonBy(p).map((l) => ({ title: l.title, paid: l.finalPrice ?? 0, fmv: l.fmv ?? 0, listings: l.sources?.length }));
-      return writeReceipt(p.name, items);
+      return writeReceipt(p.name, items, sale ? salesContext(p, s, wonBy(p)) : undefined);
     }),
   );
   for (const [k, p] of winners.entries()) {
@@ -546,13 +691,16 @@ async function doClose(): Promise<State> {
       } else {
         try {
           const lots = wonBy(p);
+          const lines = sale
+            ? salesInvoiceLines(salesContext(p, s, lots), lots)
+            : lots.map((l) => ({ name: l.title, amount: l.finalPrice ?? 0, description: `Estimated fair market value ${money(l.fmv ?? 0)}${l.sources?.length ? ` from ${l.sources.length} retail listings via Channel3` : ""} (estimate only).` }));
           const inv = await pp.createAndSendReceiptInvoice({
             invoiceNumber: `GTR-${i.auctionId}-${p.number}`,
             recipientEmail: p.payerEmail,
-            lines: lots.map((l) => ({ name: l.title, amount: l.finalPrice ?? 0, description: `Estimated fair market value ${money(l.fmv ?? 0)}${l.sources?.length ? ` from ${l.sources.length} retail listings via Channel3` : ""} (estimate only).` })),
+            lines,
             note: text,
             memo: s.ledger.find((r) => r.kind === "captured" && r.paddleId === p.id && r.status !== "FAILED")?.paypalId,
-            invoicerBusinessName: "Maple Street Elementary PTA",
+            invoicerBusinessName: cfg.invoicerName,
           });
           invoiceId = inv.invoiceId;
           await pp.recordPayment(inv.invoiceId, { amount: pp.centsToAmount(cents(amount)), note: "Paid via Going Twice paddle capture" });
@@ -571,6 +719,39 @@ async function doClose(): Promise<State> {
   say("close", {});
   recomputeTotals();
   return s;
+}
+
+/** Sales-receipt numbers for one winner: all code-computed, so receipt, invoice and capture always agree. */
+function salesContext(p: Paddle, s: State, lots: Lot[]): SalesContext {
+  const cfg = typeConfig(s.auctionType);
+  const commissionPct = s.settings?.commissionPct ?? 0;
+  const premiumPct = s.settings?.premiumPct ?? 0;
+  const hammer = lots.reduce((c, l) => c + cents(l.finalPrice ?? 0), 0);
+  const total = cents(p.capturedAmount ?? 0) || grossCents(hammer, premiumPct);
+  return {
+    orgName: cfg.orgName,
+    premiumPct,
+    hammer: dollars(hammer),
+    premium: dollars(total - hammer),
+    total: dollars(total),
+    consignment: cfg.payoutPlan === "consignment",
+    commissionPct,
+    lots: lots.map((l) => {
+      const h = cents(l.finalPrice ?? 0);
+      return { title: l.title, hammer: l.finalPrice ?? 0, consignor: l.consignor, credit: dollars(h - Math.round((h * commissionPct) / 100)), unit: l.unit, quantity: l.quantity };
+    }),
+  };
+}
+
+function salesInvoiceLines(ctx: SalesContext, lots: Lot[]) {
+  const lines = lots.map((l, k) => {
+    const bits = [`Hammer price ${money(l.finalPrice)}`];
+    if (l.unit === "head" && (l.quantity ?? 0) > 1 && l.finalPrice) bits.push(`${l.quantity} head, ${money(Math.round((l.finalPrice / (l.quantity ?? 1)) * 100) / 100)} per head`);
+    if (ctx.consignment && l.consignor) bits.push(`consignor credit ${money(ctx.lots[k].credit)} to ${l.consignor} (${100 - ctx.commissionPct}% of hammer)`);
+    return { name: l.title, amount: l.finalPrice ?? 0, description: `${bits.join("; ")}.` };
+  });
+  if (ctx.premium > 0) lines.push({ name: `Buyer's premium (${ctx.premiumPct}%)`, amount: ctx.premium, description: `${ctx.premiumPct}% of the ${money(ctx.hammer)} hammer total.` });
+  return lines;
 }
 
 // ---------------------------------------------------------------- webhooks

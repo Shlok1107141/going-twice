@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { QrCode } from "@/components/QrCode";
 import { SandboxBadge } from "@/components/SandboxBadge";
+import { typeConfig } from "@/lib/auction/auctionTypes";
 import { post } from "@/lib/client/api";
 import { clock, findPaddle, headroom, isBidEvent, money, stageLot } from "@/lib/client/format";
 import type { AuctionEvent, Lot, State } from "@/lib/client/types";
@@ -88,8 +89,13 @@ export default function StagePage() {
         <div className="flex items-baseline gap-4">
           <h1 className="font-serif text-[clamp(1.8rem,2.6vw,3.2rem)] font-black leading-none text-stone-900">Going Twice</h1>
           <span className="text-[clamp(0.8rem,1.1vw,1.3rem)] font-semibold uppercase tracking-[0.25em] text-amber-800">
-            Charity Auction{lot && lotIndex > 0 ? ` · Lot ${lotIndex} of ${state.lots.length}` : ""}
+            {typeConfig(state.auctionType).stageLabel}{lot && lotIndex > 0 ? ` · Lot ${lotIndex} of ${state.lots.length}` : ""}
           </span>
+          {(state.settings?.premiumPct ?? 0) > 0 && (
+            <span className="rounded-full bg-amber-200 px-3 py-1 text-[clamp(0.75rem,1vw,1.2rem)] font-bold text-amber-950">
+              Plus {state.settings?.premiumPct}% buyer&apos;s premium
+            </span>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-3">
           {error && <span role="status" className="rounded-full bg-rose-100 px-3 py-1 text-sm font-bold text-rose-900">Reconnecting&hellip;</span>}
@@ -132,6 +138,13 @@ export default function StagePage() {
                   </p>
                   <h2 className="font-serif text-[min(3.6vw,7vh)] font-black leading-[1.05] text-stone-900">{lot.title}</h2>
                   <p className="mt-1 line-clamp-2 text-[min(1.5vw,2.8vh)] leading-snug text-stone-600">{lot.description}</p>
+                  {(lot.consignor || (lot.unit === "head" && (lot.quantity ?? 0) > 1)) && (
+                    <p className="mt-1 text-[min(1.3vw,2.4vh)] font-semibold text-stone-700">
+                      {lot.consignor ? `From ${lot.consignor}` : ""}
+                      {lot.consignor && lot.unit === "head" ? " · " : ""}
+                      {lot.unit === "head" && (lot.quantity ?? 0) > 1 ? `${lot.quantity} head, one bid for the lot` : ""}
+                    </p>
+                  )}
                   {!!lot.fmv && lot.sources?.length ? (
                     <p className="mt-1 text-[min(1.3vw,2.4vh)] font-semibold text-amber-800">Est. value {money(lot.fmv)} · via Channel3</p>
                   ) : null}

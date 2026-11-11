@@ -53,3 +53,24 @@ Every request runs in an isolated auction **room**, chosen by `?room=CODE` on th
 
 ## Gemini resilience
 Short auctioneer lines use `GEMINI_FAST_MODEL` (default `gemini-2.5-flash-lite`); other calls use `GEMINI_MODEL`. On HTTP 429 the call retries once after 1.2 s, then callers fall back to scripted text. A global limiter allows at most 12 Gemini calls per minute. The Anthropic path is unchanged.
+
+## Auction types
+Built for the school gala (the default, `charity`); works for any live auction. `src/lib/auction/auctionTypes.ts` holds the per-type config (label, Gus persona and lines, 4 sample lots, receipt kind, payout plan, defaults). `State` gains `auctionType: 'charity'|'estate'|'collectibles'|'farm'` and `settings: {premiumPct, commissionPct}`; `Lot` gains optional `consignor`, `unit` (`head`|`lot`) and `quantity`. Payout/consignor emails are kept server-side only (never in `State`). Rooms persisted before this default to `charity`.
+
+| Method + path | Body | Response |
+|---|---|---|
+| POST `/api/auction/type` | `{type, settings?: {premiumPct?, commissionPct?, organizerEmail?, consignorEmails?}}` | `State`: the room is reset with that type's sample lots. 400 on an unknown type or out-of-range numbers (premium 0-50, commission 0-60). `premiumPct` is ignored for `charity`, `commissionPct` for everything but `estate`. `organizerEmail` (house payout) defaults to `TREASURER_PAYPAL_EMAIL`; `consignorEmails` (one per consignor, in order of first appearance) default to the `SANDBOX_BUYER_*` emails (passwords never read). `POST /api/reset` keeps the room's type and settings. |
+
+| Type | Defaults | Receipts | Payout (one Payouts batch) |
+|---|---|---|---|
+| `charity` | no premium, +$10 steps | donation receipt with FMV (unchanged) | captured total to the organizer |
+| `estate` | 15% commission, premium 0 | sales receipt incl. consignor credit | per consignor: hammer minus commission; house: commission (+ any premium) |
+| `collectibles` | 10% buyer's premium | sales receipt: hammer, premium, total | captured total to the house |
+| `farm` | no premium, $100+ steps, per head / per lot | sales receipt | captured total to the seller |
+
+Money rules (all integer cents in code):
+- Capture per winner = hammer total + `round(hammer total x premiumPct / 100)`. With `premiumPct = 0` this is exactly the old behavior.
+- Bid validation: `committed - own + amount` plus the premium on that sum must fit in `holdAmount`; the error names the premium.
+- Estate payout: per sold lot `credit = hammer - round(hammer x commissionPct / 100)`, summed per consignor email; the house gets `captured - sum(credits)`. Items always sum to the captured total. The ledger gets one `payout` row per item (all sharing the batch's `paypalId`) with notes like `consignor 85% / house 15%: <lots> to consignor <email>`. A lot without a consignor email goes to the house.
+- Idempotency is unchanged: `payoutDone` plus the `close-<auctionId>` batch id mean a second close moves no money.
+- Gus: persona and vocabulary per type are passed into the Claude prompt and the template lines (`{consignor}`, `{each}` per-head quotes, "plus buyer's premium").
