@@ -55,6 +55,7 @@ function Header() {
 
 function RegisterCard({ onCreated, testCards }: { onCreated: (c: Created) => void; testCards?: boolean }) {
   const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
   const [hold, setHold] = useState(250);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -65,7 +66,7 @@ function RegisterCard({ onCreated, testCards }: { onCreated: (c: Created) => voi
     setBusy(true);
     setError(null);
     try {
-      const res = await post<Created>("/api/paddle", { name: name.trim(), holdAmount: hold, ...(testCard ? { testCard: true } : {}) });
+      const res = await post<Created>("/api/paddle", { name: name.trim(), holdAmount: hold, ...(email.trim() ? { email: email.trim() } : {}), ...(testCard ? { testCard: true } : {}) });
       onCreated(res);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not register");
@@ -83,6 +84,10 @@ function RegisterCard({ onCreated, testCards }: { onCreated: (c: Created) => voi
       <div>
         <label htmlFor="reg-name" className={label}>Your name</label>
         <input id="reg-name" className={input} value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" placeholder="e.g. Dana R." required maxLength={40} />
+      </div>
+      <div>
+        <label htmlFor="reg-email" className={label}>Email for your receipt (optional)</label>
+        <input id="reg-email" type="email" className={input} value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" placeholder="you@example.com" maxLength={254} />
       </div>
       <HoldPicker value={hold} onChange={setHold} idPrefix="reg-hold" />
       {error && <p role="alert" className="rounded-lg bg-rose-100 p-3 text-sm font-semibold text-rose-900">{error}</p>}

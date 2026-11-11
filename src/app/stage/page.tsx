@@ -45,6 +45,8 @@ const eventStyle: Record<AuctionEvent["type"], string> = {
 export default function StagePage() {
   const { state, error } = useAuctionState(800);
   const origin = useOrigin();
+  const room = typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("room");
+  const joinUrl = origin ? `${origin}/paddle${room ? `?room=${encodeURIComponent(room)}` : ""}` : "";
   const speech = useSpeech(state?.caption);
   const live = state?.status === "live";
 
@@ -177,10 +179,10 @@ export default function StagePage() {
         {/* Right column */}
         <aside className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-[1.1vw]">
           <section aria-label="Join the auction" className="flex items-center gap-4 rounded-3xl border border-stone-300 bg-white p-4 shadow">
-            <QrCode value={origin ? `${origin}/paddle` : ""} label="QR code linking to the bidder paddle page" className="h-[min(8vw,15vh)] w-[min(8vw,15vh)] shrink-0" />
+            <QrCode value={joinUrl} label="QR code linking to the bidder paddle page" className="h-[min(8vw,15vh)] w-[min(8vw,15vh)] shrink-0" />
             <div className="min-w-0">
               <p className="font-serif text-[clamp(1.1rem,1.6vw,2rem)] font-black leading-tight text-stone-900">Scan to get a paddle</p>
-              <p className="mt-1 break-all font-mono text-[clamp(0.7rem,0.95vw,1.2rem)] text-stone-600">{origin ? `${origin}/paddle` : ""}</p>
+              <p className="mt-1 break-all font-mono text-[clamp(0.7rem,0.95vw,1.2rem)] text-stone-600">{joinUrl}</p>
             </div>
           </section>
 

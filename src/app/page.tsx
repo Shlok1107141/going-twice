@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { SandboxBadge } from "@/components/SandboxBadge";
+import { StartRoom } from "@/components/StartRoom";
 
 const screens = [
   { href: "/stage", title: "Stage", emoji: "\u{1F3AD}", blurb: "The big screen for the room: lot, bids, Gus the auctioneer, and a QR code to join." },
@@ -27,6 +28,9 @@ export default function Home() {
         <p className="mt-5 max-w-2xl text-xl text-stone-700 sm:text-2xl">
           An AI auctioneer for school charity auctions. Every bidder&apos;s paddle is a PayPal authorization hold, so bids are backed by real funds and nobody is charged until the hammer falls.
         </p>
+        <div className="mt-6">
+          <StartRoom />
+        </div>
       </section>
 
       <nav aria-label="Screens" className="grid gap-4 sm:grid-cols-3">

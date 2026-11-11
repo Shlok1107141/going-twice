@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { withRoomQuery } from "./api";
 import type { State } from "./types";
 
 /** Polls GET /api/state. `refresh()` fetches immediately (e.g. right after a user action). */
@@ -16,7 +17,7 @@ export function useAuctionState(intervalMs = 800) {
 
     const fetchOnce = async () => {
       try {
-        const res = await fetch("/api/state", { cache: "no-store" });
+        const res = await fetch(withRoomQuery("/api/state"), { cache: "no-store" });
         if (!res.ok) throw new Error(`State request failed (${res.status})`);
         const data = (await res.json()) as State;
         if (!stopped) {

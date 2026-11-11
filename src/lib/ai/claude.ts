@@ -6,17 +6,36 @@ export function claudeEnabled(): boolean {
 }
 
 // Free-tier fallback when no Anthropic key is configured (Google AI Studio key, no card).
+const rl = globalThis as unknown as { __gtGeminiCalls?: number[] };
+
+/** Tiny global limiter: at most MAX_CALLS_PER_MIN Gemini calls per rolling minute, else callers fall back. */
+const MAX_CALLS_PER_MIN = 12;
+function takeGeminiSlot(): boolean {
+  const now = Date.now();
+  const calls = (rl.__gtGeminiCalls = (rl.__gtGeminiCalls ?? []).filter((t) => now - t < 60_000));
+  if (calls.length >= MAX_CALLS_PER_MIN) return false;
+  calls.push(now);
+  return true;
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 async function callGemini(
   key: string,
-  args: { system: string; user: string; maxTokens?: number; timeoutMs?: number },
+  args: { system: string; user: string; maxTokens?: number; timeoutMs?: number; fast?: boolean },
 ): Promise<string | null> {
-  const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  const model = args.fast
+    ? process.env.GEMINI_FAST_MODEL || "gemini-2.5-flash-lite"
+    : process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  if (!takeGeminiSlot()) {
+    console.warn("[gemini] local rate limit reached; using fallback");
+    return null;
+  }
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), Math.max(args.timeoutMs ?? 4000, 6000));
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-      {
+    const send = () =>
+      fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
         method: "POST",
         headers: { "x-goog-api-key": key, "content-type": "application/json" },
         body: JSON.stringify({
@@ -29,8 +48,13 @@ async function callGemini(
         }),
         signal: ctrl.signal,
         cache: "no-store",
-      },
-    );
+      });
+    let res = await send();
+    if (res.status === 429) {
+      console.warn("[gemini] 429, retrying once");
+      await sleep(1200);
+      if (takeGeminiSlot()) res = await send();
+    }
     if (!res.ok) {
       console.error("[gemini] HTTP", res.status);
       return null;
@@ -72,6 +96,8 @@ export async function callClaude(args: {
   user: string;
   maxTokens?: number;
   timeoutMs?: number;
+  /** Short auctioneer lines: use GEMINI_FAST_MODEL (default gemini-2.5-flash-lite) on the Gemini path. */
+  fast?: boolean;
 }): Promise<string | null> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) {

@@ -19,6 +19,7 @@ import {
   type Paddle,
   type State,
 } from "./store";
+import { currentRoom } from "./room";
 
 export class EngineError extends Error {
   constructor(public status: number, message: string) {
@@ -65,6 +66,18 @@ export function reset(): State {
   return resetStore();
 }
 
+// Sandbox receipts: test-card paddles have no PayPal payer, so default to the next sandbox buyer
+// email (env SANDBOX_BUYER_1..3 = "email:password"; only the email part is ever used).
+const sb = globalThis as unknown as { __gtBuyerRR?: number };
+function nextSandboxBuyerEmail(): string | undefined {
+  const emails = [1, 2, 3]
+    .map((n) => process.env[`SANDBOX_BUYER_${n}`]?.split(":")[0]?.trim())
+    .filter((e): e is string => !!e && e.includes("@"));
+  if (!emails.length) return undefined;
+  sb.__gtBuyerRR = (sb.__gtBuyerRR ?? -1) + 1;
+  return emails[sb.__gtBuyerRR % emails.length];
+}
+
 type NewPaddle = { name: string; holdAmount: number; agent?: Paddle["agent"]; testCard?: boolean; email?: string };
 
 // PayPal's published sandbox test Visa (not a real card). Sandbox only.
@@ -83,6 +96,7 @@ export async function createPaddle(input: NewPaddle): Promise<{ paddle: Paddle; 
   if (input.testCard && !isDemoMode() && !testCardsAllowed()) {
     throw new EngineError(400, "testCard is only allowed when PAYPAL_ENV=sandbox");
   }
+  if (!input.email && input.testCard && !isDemoMode() && testCardsAllowed()) input.email = nextSandboxBuyerEmail();
   const p: Paddle = {
     id: nextId("p"),
     number: 100 + s.paddles.length + 1,
@@ -300,11 +314,12 @@ function triggerAgents(lotId: string): void {
   const again = (ag.__gtAgentAgain ??= new Set());
   for (const p of getState().paddles) {
     if (p.kind !== "agent" || p.status !== "held") continue;
-    if (busy.has(p.id)) {
-      again.add(p.id);
+    const key = `${currentRoom()}:${p.id}`;
+    if (busy.has(key)) {
+      again.add(key);
       continue;
     }
-    busy.add(p.id);
+    busy.add(key);
     const delay = Math.max(100, 1200 / tickSpeed());
     setTimeout(() => void runAgent(p.id, lotId), delay);
   }
@@ -313,9 +328,10 @@ function triggerAgents(lotId: string): void {
 async function runAgent(paddleId: string, lotId: string): Promise<void> {
   const busy = ag.__gtAgentBusy!;
   const again = ag.__gtAgentAgain!;
+  const key = `${currentRoom()}:${paddleId}`;
   try {
     for (let round = 0; round < 3; round++) {
-      again.delete(paddleId);
+      again.delete(key);
       const s = getState();
       const p = s.paddles.find((x) => x.id === paddleId);
       const lot = s.lots.find((l) => l.id === lotId);
@@ -329,33 +345,37 @@ async function runAgent(paddleId: string, lotId: string): Promise<void> {
         // Proposal only: the engine re-validates exactly like a human bid.
         const r = placeBid(p.id, lot.id, d.amount, "agent");
         if (r.ok) return;
-        if (!again.has(paddleId)) {
+        if (!again.has(key)) {
           p.agent.lastReasoning = `${d.reasoning} (Engine declined: ${r.error}.)`;
           return;
         }
-      } else if (!again.has(paddleId)) {
+      } else if (!again.has(key)) {
         return;
       }
     }
   } catch (e) {
     console.error("[agent]", (e as Error).message);
   } finally {
-    busy.delete(paddleId);
+    busy.delete(key);
   }
 }
 
 // ---------------------------------------------------------------- settlement
 
-const cg = globalThis as unknown as { __gtClosing?: Promise<State> };
+const cg = globalThis as unknown as { __gtClosing?: Map<string, Promise<State>> };
 
 /** Idempotent. Concurrent calls share one run; a closed auction returns state with no money movement. */
 export function close(): Promise<State> {
-  if (!cg.__gtClosing) {
-    cg.__gtClosing = doClose().finally(() => {
-      cg.__gtClosing = undefined;
+  const closing = (cg.__gtClosing ??= new Map());
+  const room = currentRoom();
+  let run = closing.get(room);
+  if (!run) {
+    run = doClose().finally(() => {
+      closing.delete(room);
     });
+    closing.set(room, run);
   }
-  return cg.__gtClosing;
+  return run;
 }
 
 function wonBy(p: Paddle): Lot[] {
