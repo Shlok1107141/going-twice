@@ -3,7 +3,7 @@
 **An AI auctioneer for school charity auctions where every bidder's paddle is a PayPal authorization hold.** Bidders approve once, tap to bid, and pay only what they win. The gavel is the checkout.
 
 ## Demo
-- Hosted app: [DEMO_URL] (Render free tier; first load can take a moment to wake)
+- Hosted app: https://going-twice.onrender.com (Render free tier; first load can take a moment to wake)
 - Video (under 3 min): [VIDEO_URL]
 - Runs fully in the **PayPal sandbox**. No real money moves.
 
@@ -73,7 +73,7 @@ cp .env.example .env.local   # fill in values, then npm run dev
 | `APP_BASE_URL` | Public URL, e.g. `http://localhost:3000` |
 | `DEMO_MODE=1` | Force demo mode even with keys set |
 
-Sandbox test accounts (buyers, treasurer): [SANDBOX_ACCOUNTS]
+Sandbox test accounts (buyers, treasurer): not required. Use the "Use sandbox test card" option on /paddle to create real sandbox holds with no login (buyer logins for the PayPal popup are provided to judges in the Devpost testing notes).
 
 ## Testing walkthrough (about 4 minutes)
 1. Open `/stage` on a laptop and click to start sound.
