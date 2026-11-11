@@ -7,6 +7,9 @@
 const BASE = (process.argv[2] || "http://localhost:3000").replace(/\/$/, "");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let failures = 0;
+// Each run uses its own fresh room so parallel judges/runs never collide.
+const ROOM = process.env.ROOM || "T" + Date.now().toString(36).toUpperCase().slice(-8);
+const inRoom = (path, room = ROOM) => `${path}${path.includes("?") ? "&" : "?"}room=${room}`;
 
 function check(cond, msg) {
   if (cond) console.log(`  ok   ${msg}`);
@@ -17,7 +20,7 @@ function check(cond, msg) {
 }
 
 async function api(method, path, body) {
-  const res = await fetch(BASE + path, {
+  const res = await fetch(BASE + inRoom(path), {
     method,
     headers: body ? { "content-type": "application/json" } : {},
     body: body ? JSON.stringify(body) : undefined,
@@ -70,7 +73,7 @@ async function main() {
   check(s0.demoMode === true, "server is in DEMO_MODE");
 
   // Validation
-  const badPaddle = await fetch(BASE + "/api/paddle", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "", holdAmount: -5 }) });
+  const badPaddle = await fetch(BASE + inRoom("/api/paddle"), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "", holdAmount: -5 }) });
   check(badPaddle.status === 400, "invalid paddle body -> 400");
 
   const dana = await api("POST", "/api/paddle", { name: "Dana R.", holdAmount: 300 });
@@ -177,6 +180,17 @@ async function main() {
   console.log("Totals:", again.totals);
   console.log("Receipt sample:\n" + receipts[0]?.text.split("\n").map((l) => "  | " + l).join("\n"));
   console.log("Caption:", again.caption.text);
+  // Rooms are isolated: another room is untouched by this run, and resetting it leaves this room alone.
+  const other = ROOM + "X";
+  const os = await (await fetch(BASE + inRoom("/api/state", other))).json();
+  check(os.status === "lobby" && os.paddles.length === 0 && os.ledger.length === 0, `room ${other} is untouched by room ${ROOM}`);
+  const before = await state();
+  await fetch(BASE + inRoom("/api/reset", other), { method: "POST" });
+  const after = await state();
+  check(after.status === before.status && after.paddles.length === before.paddles.length && after.ledger.length === before.ledger.length, `resetting room ${other} does not affect room ${ROOM}`);
+  const rn = await (await fetch(BASE + "/api/room/new")).json();
+  check(/^[A-Z0-9]{1,12}$/.test(rn.room ?? ""), `GET /api/room/new -> ${rn.room}`);
+
   console.log(failures ? `\n${failures} check(s) FAILED` : "\nALL CHECKS PASSED");
   process.exit(failures ? 1 : 0);
 }
