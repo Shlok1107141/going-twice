@@ -9,6 +9,8 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "ag-studio": "3.0.0",
+    "ag-studio-react": "3.0.0",
     "next": "16.4.6",
     "qrcode": "^1.5.4",
     "react": "19.3.0",
