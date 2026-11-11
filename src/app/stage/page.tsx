@@ -116,15 +116,23 @@ export default function StagePage() {
           {lot ? (
             <>
               <div className="flex items-center gap-[1.6vw]">
-                <div aria-hidden className="grid h-[min(7vw,13vh)] w-[min(7vw,13vh)] shrink-0 place-items-center rounded-3xl bg-amber-50 text-[min(4.6vw,8.5vh)] ring-2 ring-amber-200">
-                  {lot.emoji}
-                </div>
+                {lot.image ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={lot.image} alt={lot.title} className="h-[min(11vw,20vh)] w-[min(11vw,20vh)] shrink-0 rounded-3xl bg-amber-50 object-cover ring-2 ring-amber-200" />
+                ) : (
+                  <div aria-hidden className="grid h-[min(7vw,13vh)] w-[min(7vw,13vh)] shrink-0 place-items-center rounded-3xl bg-amber-50 text-[min(4.6vw,8.5vh)] ring-2 ring-amber-200">
+                    {lot.emoji}
+                  </div>
+                )}
                 <div className="min-w-0">
                   <p className="text-[clamp(0.8rem,1.1vw,1.3rem)] font-semibold uppercase tracking-[0.25em] text-amber-800">
                     {lot.status === "open" ? "Now bidding" : lot.status === "pending" ? "Up next" : lot.status === "sold" ? "Just sold" : "Lot closed"}
                   </p>
                   <h2 className="font-serif text-[min(3.6vw,7vh)] font-black leading-[1.05] text-stone-900">{lot.title}</h2>
                   <p className="mt-1 line-clamp-2 text-[min(1.5vw,2.8vh)] leading-snug text-stone-600">{lot.description}</p>
+                  {!!lot.fmv && lot.sources?.length ? (
+                    <p className="mt-1 text-[min(1.3vw,2.4vh)] font-semibold text-amber-800">Est. value {money(lot.fmv)} · via Channel3</p>
+                  ) : null}
                 </div>
               </div>
 

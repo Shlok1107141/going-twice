@@ -14,6 +14,7 @@ import {
   recomputeTotals,
   resetStore,
   save,
+  setCaption,
   testCardsAllowed,
   type Lot,
   type Paddle,
@@ -179,6 +180,41 @@ export function startLot(lotId: string): State {
   say("open", { lot: lot.title, amount: lot.startPrice });
   triggerAgents(lot.id);
   return s;
+}
+
+export type LotDraft = {
+  title: string;
+  description: string;
+  startPrice: number;
+  increment: number;
+  fmv: number;
+  image?: string;
+  sources?: { retailer: string; price: number; url: string }[];
+};
+
+/** Snap-a-lot: append a pending lot (numbers already computed by fmv.ts) and have Gus announce it. */
+export function addLot(draft: LotDraft): Lot {
+  const s = getState();
+  if (s.status === "closed") throw new EngineError(409, "Auction is closed");
+  const lot: Lot = {
+    id: nextId("lot"),
+    title: draft.title,
+    description: draft.description,
+    emoji: "🎁",
+    startPrice: draft.startPrice,
+    increment: draft.increment,
+    status: "pending",
+    highBid: 0,
+    phase: "bidding",
+    fmv: draft.fmv,
+    image: draft.image,
+    sources: draft.sources,
+  };
+  s.lots.push(lot);
+  pushEvent({ type: "system", text: `New lot added: ${lot.title}, opening at ${money(lot.startPrice)}.`, lotId: lot.id });
+  setCaption(`Fresh off the donation table: ${lot.title}! Estimated at ${money(lot.fmv)}, opening at ${money(lot.startPrice)}.`);
+  save();
+  return lot;
 }
 
 export type BidResult = { ok: true } | { ok: false; error: string };
@@ -473,7 +509,7 @@ async function doClose(): Promise<State> {
   const winners = s.paddles.filter((p) => p.status === "captured" && !s.receipts.some((r) => r.paddleId === p.id));
   const texts = await Promise.all(
     winners.map((p) => {
-      const items: ReceiptItem[] = wonBy(p).map((l) => ({ title: l.title, paid: l.finalPrice ?? 0, fmv: l.fmv ?? 0 }));
+      const items: ReceiptItem[] = wonBy(p).map((l) => ({ title: l.title, paid: l.finalPrice ?? 0, fmv: l.fmv ?? 0, listings: l.sources?.length }));
       return writeReceipt(p.name, items);
     }),
   );
@@ -493,7 +529,7 @@ async function doClose(): Promise<State> {
           const inv = await pp.createAndSendReceiptInvoice({
             invoiceNumber: `GTR-${i.auctionId}-${p.number}`,
             recipientEmail: p.payerEmail,
-            lines: lots.map((l) => ({ name: l.title, amount: l.finalPrice ?? 0, description: `Estimated fair market value ${money(l.fmv ?? 0)} (estimate only).` })),
+            lines: lots.map((l) => ({ name: l.title, amount: l.finalPrice ?? 0, description: `Estimated fair market value ${money(l.fmv ?? 0)}${l.sources?.length ? ` from ${l.sources.length} retail listings via Channel3` : ""} (estimate only).` })),
             note: text,
             memo: s.ledger.find((r) => r.kind === "captured" && r.paddleId === p.id && r.status !== "FAILED")?.paypalId,
             invoicerBusinessName: "Maple Street Elementary PTA",
