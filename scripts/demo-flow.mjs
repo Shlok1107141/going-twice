@@ -30,6 +30,18 @@ const state = () => api("GET", "/api/state");
 const lotOf = async (id) => (await state()).lots.find((l) => l.id === id);
 const nextBid = (lot) => (lot.highPaddleId ? lot.highBid + lot.increment : lot.startPrice);
 
+// Agent decisions may call an LLM (Gemini/Claude), so poll instead of sleeping a fixed time.
+async function waitFor(fn, timeoutMs = 10000) {
+  const t0 = Date.now();
+  let v;
+  while (Date.now() - t0 < timeoutMs) {
+    v = await fn();
+    if (v) return v;
+    await sleep(200);
+  }
+  return v;
+}
+
 async function bid(paddleId, lotId, amount) {
   const r = await api("POST", "/api/bid", { paddleId, lotId, amount });
   return r;
@@ -79,19 +91,20 @@ async function main() {
   const pizza = "lot-pizza";
   let st = await api("POST", "/api/lot/start", { lotId: pizza });
   check(st.status === "live" && st.currentLotId === pizza, "lot started, auction live");
-  await sleep(700); // agent may open the bidding itself
-  let lot = await lotOf(pizza);
+  // agent may open the bidding itself
+  let lot = await waitFor(async () => { const l = await lotOf(pizza); return l.highPaddleId ? l : null; }) ?? (await lotOf(pizza));
   check(lot.highPaddleId === agent.paddleId, "agent opened bidding on a matching lot");
   check((await bid(dana.paddleId, pizza, lot.highBid)).ok === false, "bid not above high bid rejected");
   check((await bid(agent.paddleId, pizza, nextBid(lot))).ok === false, "humans cannot bid as an agent paddle");
   check((await bid(dana.paddleId, pizza, nextBid(lot))).ok === true, "Dana outbids agent");
   check((await bid(dana.paddleId, pizza, nextBid(await lotOf(pizza)))).ok === false, "self-outbid rejected");
-  await sleep(700);
-  lot = await lotOf(pizza);
+  lot = await waitFor(async () => { const l = await lotOf(pizza); return l.highPaddleId === agent.paddleId ? l : null; }) ?? (await lotOf(pizza));
   check(lot.highPaddleId === agent.paddleId, `agent re-bid to ${lot.highBid}`);
   check((await bid(marcus.paddleId, pizza, 200)).ok === false, "Marcus over his $150 hold rejected");
+  const reasonBefore = (await state()).paddles.find((p) => p.id === agent.paddleId)?.agent?.lastReasoning;
   check((await bid(marcus.paddleId, pizza, 75)).ok === true, "Marcus jumps to $75");
-  await sleep(700);
+  await waitFor(async () => (await state()).paddles.find((p) => p.id === agent.paddleId)?.agent?.lastReasoning !== reasonBefore, 8000);
+  await sleep(500);
   lot = await lotOf(pizza);
   check(lot.highPaddleId === marcus.paddleId && lot.highBid === 75, "agent stops at its $70 cap");
   st = await state();

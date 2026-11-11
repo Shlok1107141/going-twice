@@ -1,0 +1,39 @@
+# Render Blueprint for Going Twice (single web service; in-memory state, so keep ONE instance).
+# Secrets are sync:false: set them in the Render dashboard. NEXT_PUBLIC_* is inlined at build
+# time, so set it before the first deploy.
+services:
+  - type: web
+    name: going-twice
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm start # next start listens on $PORT (Render sets it)
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: PAYPAL_ENV
+        value: sandbox
+      - key: PERSIST
+        value: "1" # write-behind JSON in .data/ (ephemeral disk; survives restarts, not redeploys)
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: NEXT_PUBLIC_PAYPAL_CLIENT_ID
+        sync: false
+      - key: TREASURER_PAYPAL_EMAIL
+        sync: false
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: APP_BASE_URL
+        sync: false
+      - key: DEMO_MODE
+        sync: false

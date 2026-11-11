@@ -8,7 +8,9 @@ export async function POST(req: Request) {
     const rawBody = await req.text();
     const allowUnverified = isDemoMode() || process.env.PAYPAL_WEBHOOK_ALLOW_UNVERIFIED === "1";
     let verified = false;
-    if (!isDemoMode() && process.env.PAYPAL_WEBHOOK_ID) {
+    if (!isDemoMode() && !process.env.PAYPAL_WEBHOOK_ID) {
+      console.warn("[webhook] PAYPAL_WEBHOOK_ID is not set; signature verification skipped");
+    } else if (!isDemoMode()) {
       verified = await verifyWebhookSignature({ headers: req.headers, rawBody }).catch((e) => {
         console.error("[webhook] verify failed:", (e as Error).message);
         return false;
