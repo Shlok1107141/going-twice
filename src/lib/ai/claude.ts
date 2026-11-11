@@ -2,7 +2,53 @@
 // callers always fall back to templates. Server-only.
 
 export function claudeEnabled(): boolean {
-  return Boolean(process.env.ANTHROPIC_API_KEY);
+  return Boolean(process.env.ANTHROPIC_API_KEY || process.env.GEMINI_API_KEY);
+}
+
+// Free-tier fallback when no Anthropic key is configured (Google AI Studio key, no card).
+async function callGemini(
+  key: string,
+  args: { system: string; user: string; maxTokens?: number; timeoutMs?: number },
+): Promise<string | null> {
+  const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), Math.max(args.timeoutMs ?? 4000, 6000));
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+      {
+        method: "POST",
+        headers: { "x-goog-api-key": key, "content-type": "application/json" },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: args.system }] },
+          contents: [{ role: "user", parts: [{ text: args.user }] }],
+          generationConfig: {
+            maxOutputTokens: Math.max(args.maxTokens ?? 80, 120),
+            thinkingConfig: { thinkingBudget: 0 },
+          },
+        }),
+        signal: ctrl.signal,
+        cache: "no-store",
+      },
+    );
+    if (!res.ok) {
+      console.error("[gemini] HTTP", res.status);
+      return null;
+    }
+    const body = (await res.json()) as {
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    };
+    const text = (body.candidates?.[0]?.content?.parts ?? [])
+      .map((p) => p.text ?? "")
+      .join("")
+      .trim();
+    return text || null;
+  } catch (e) {
+    console.error("[gemini]", (e as Error).name === "AbortError" ? "timeout" : (e as Error).message);
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export function claudeModel(): string {
@@ -16,7 +62,10 @@ export async function callClaude(args: {
   timeoutMs?: number;
 }): Promise<string | null> {
   const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) return null;
+  if (!key) {
+    const gKey = process.env.GEMINI_API_KEY;
+    return gKey ? callGemini(gKey, args) : null;
+  }
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), args.timeoutMs ?? 4000);
   try {
