@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { btn } from "@/components/ui";
 
 /** Creates a fresh auction room and sends the organizer to its admin screen. */
 export function StartRoom() {
@@ -25,16 +26,16 @@ export function StartRoom() {
 
   return (
     <div>
-      <button
-        type="button"
-        onClick={start}
-        disabled={busy}
-        className="rounded-2xl bg-amber-600 px-6 py-4 text-lg font-black uppercase text-white shadow hover:bg-amber-700 disabled:bg-stone-300 disabled:text-stone-700"
-      >
+      <button type="button" onClick={start} disabled={busy} className={`${btn.primary} px-6 py-3.5 text-base`}>
         {busy ? "Creating your room…" : "Start your own room"}
+        {!busy && <span aria-hidden>&rarr;</span>}
       </button>
-      <p className="mt-2 text-sm text-stone-700">Your own private auction: nobody else&apos;s bids or Reset can touch it.</p>
-      {error && <p role="alert" className="mt-2 text-sm font-semibold text-rose-900">{error}</p>}
+      <p className="mt-3 text-sm text-muted">A private auction of your own. Nobody else&apos;s bids or resets can touch it.</p>
+      {error && (
+        <p role="alert" className="mt-2 text-sm font-medium text-danger">
+          {error}
+        </p>
+      )}
     </div>
   );
 }
