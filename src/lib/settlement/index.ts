@@ -109,24 +109,33 @@ async function renderWorkflowsExecutor(opts: SettleOptions): Promise<State> {
   // Same plan + same ledger => same key => a re-sent close re-attaches to the in-flight run instead of
   // starting a second one. Applying a run adds ledger rows, so a retry after failures gets a fresh run.
   const key = "settle-" + createHash("sha256").update(JSON.stringify(plan)).update(String(s.ledger.length)).digest("hex").slice(0, 40);
-  const render = new Render();
-  const started = await render.workflows.startTask(`${process.env.RENDER_WORKFLOW_SLUG}/settleAuction`, [plan], { idempotencyKey: key, signal: AbortSignal.timeout(RUN_WAIT_MS) });
-  const runId = started.taskRunId;
-  pushEvent({ type: "system", text: `Render Workflows run ${runId} started: captures and voids fan out in parallel.` });
 
+  // The workflow is an optional executor: if it cannot settle (not deployed, missing PayPal keys on the
+  // workflow service, a failed run), the same close runs in-process. Every PayPal call carries the same
+  // idempotency key either way, so nothing can be charged twice.
+  const fallBack = (why: string) => {
+    pushEvent({ type: "system", text: `Render Workflows could not settle (${why.slice(0, 140)}). Settling in-process instead.` });
+    return opts.inProcess();
+  };
+
+  let runId = "";
   let details;
   try {
+    const render = new Render();
+    const started = await render.workflows.startTask(`${process.env.RENDER_WORKFLOW_SLUG}/settleAuction`, [plan], { idempotencyKey: key, signal: AbortSignal.timeout(RUN_WAIT_MS) });
+    runId = started.taskRunId;
+    pushEvent({ type: "system", text: `Render Workflows run ${runId} started: captures and voids fan out in parallel.` });
     details = await started.get(); // SDK polls the run until it finishes
   } catch (e) {
-    pushEvent({ type: "system", text: `Render Workflows run ${runId} did not report back (${e instanceof Error ? e.message.slice(0, 120) : "error"}). Close again to re-attach.` });
-    return s;
+    return fallBack(e instanceof Error ? e.message : "the run did not report back");
   }
   const result = details.status === "succeeded" || details.status === "completed" ? resultOf(details) : null;
-  if (!result) {
-    pushEvent({ type: "system", text: `Render Workflows run ${runId} ${details.status}${details.error ? `: ${details.error.slice(0, 160)}` : ""}. Close again to retry.` });
-    return s;
-  }
-  return applyResult(plan, result, runId);
+  if (!result) return fallBack(`run ${runId} ${details.status}${details.error ? `: ${details.error}` : ""}`);
+  const steps = [...result.captures, ...result.voids];
+  if (steps.length > 0 && steps.every((x) => !x.ok)) return fallBack(`every step of run ${runId} failed: ${steps[0].note ?? "unknown error"}`);
+  const after = applyResult(plan, result, runId);
+  // Some steps failed: finish only those in-process (it skips paddles that are already settled).
+  return after.status === "closed" ? after : opts.inProcess();
 }
 
 // ---------------------------------------------------------------- apply (mirrors engine.doClose)
