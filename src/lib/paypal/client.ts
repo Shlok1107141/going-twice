@@ -34,6 +34,8 @@ function credentials(): { clientId: string; clientSecret: string } {
 }
 
 // ---------- Errors ----------
+// Mapping follows the APIMatic plugin's typescript-error-handling skill: one family, a closed
+// discriminator (`kind`), the debug id surfaced, and nothing hidden in message-only strings.
 
 export interface PayPalErrorDetail {
   issue?: string;
@@ -43,9 +45,26 @@ export interface PayPalErrorDetail {
   location?: string;
 }
 
-/** Any non-2xx from PayPal. `name` is PayPal's error name (e.g. UNPROCESSABLE_ENTITY), `issue` the first details[].issue. */
+/** Closed set, like the SDK's `err.kind`: switch on it exhaustively. */
+export type PayPalErrorKind =
+  | "auth" //          401/403 (bad/expired credentials, missing scope)
+  | "validation" //    400, other 422
+  | "not_found" //     404
+  | "duplicate" //     422 DUPLICATE_TRANSACTION / DUPLICATE_INVOICE_ID / already captured
+  | "rate_limit" //    429
+  | "server" //        5xx and 408
+  | "timeout" //       no response within the per-attempt deadline (status 0)
+  | "network" //       DNS/connect/reset before a response (status 0)
+  | "api"; //          any other error status
+
+const DUPLICATE_RE = /DUPLICATE|ALREADY_CAPTURED|PREVIOUSLY_CAPTURED/i;
+const RETRY_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
+
+/** Any non-2xx (or no-response) outcome from PayPal. `paypalName` is PayPal's error name, `issue` the first details[].issue. */
 export class PayPalError extends Error {
+  /** HTTP status; 0 when no response arrived (kind "timeout" | "network"). */
   readonly status: number;
+  readonly kind: PayPalErrorKind;
   readonly paypalName?: string;
   readonly issue?: string;
   readonly debugId?: string;
@@ -53,6 +72,10 @@ export class PayPalError extends Error {
   readonly body: unknown;
   readonly method: string;
   readonly path: string;
+  /** Retry-After from the response, in ms, when PayPal sent one. */
+  readonly retryAfterMs?: number;
+  /** Number of sends made for this call (1 = no retry happened). */
+  attempts = 1;
 
   constructor(args: {
     status: number;
@@ -60,6 +83,9 @@ export class PayPalError extends Error {
     path: string;
     body: unknown;
     debugIdHeader?: string | null;
+    retryAfterMs?: number;
+    kind?: "timeout" | "network";
+    cause?: unknown;
   }) {
     const b = (args.body ?? {}) as {
       name?: string;
@@ -74,7 +100,9 @@ export class PayPalError extends Error {
     const name = b.name ?? b.error;
     const debugId = b.debug_id ?? args.debugIdHeader ?? undefined;
     const msg = [
-      `PayPal ${args.method} ${args.path} -> ${args.status}`,
+      args.kind
+        ? `PayPal ${args.method} ${args.path} -> ${args.kind === "timeout" ? "timed out" : "network failure"}`
+        : `PayPal ${args.method} ${args.path} -> ${args.status}`,
       name,
       issue,
       b.message ?? b.error_description ?? details[0]?.description,
@@ -82,8 +110,8 @@ export class PayPalError extends Error {
     ]
       .filter(Boolean)
       .join(" | ");
-    super(msg);
-    this.name = "PayPalError";
+    super(msg, args.cause === undefined ? undefined : { cause: args.cause });
+    this.name = "PayPalError"; // src/lib/auction/http.ts matches on this string
     this.status = args.status;
     this.paypalName = name;
     this.issue = issue;
@@ -92,11 +120,137 @@ export class PayPalError extends Error {
     this.body = args.body;
     this.method = args.method;
     this.path = args.path;
+    this.retryAfterMs = args.retryAfterMs;
+    this.kind = args.kind ?? classify(args.status, name, issue, msg);
   }
 
-  /** True if retrying the same request (same PayPal-Request-Id) could succeed. */
+  /** True if repeating the same request (same PayPal-Request-Id) could succeed. */
   get retryable(): boolean {
-    return this.status === 429 || this.status >= 500;
+    return RETRY_STATUSES.has(this.status) || this.kind === "timeout" || this.kind === "network";
+  }
+
+  /** True for the 422 family that means "an earlier attempt already went through". */
+  get isDuplicate(): boolean {
+    return this.kind === "duplicate";
+  }
+}
+
+function classify(status: number, name?: string, issue?: string, msg = ""): PayPalErrorKind {
+  if (status === 401 || status === 403) return "auth";
+  if (status === 404) return "not_found";
+  if (status === 429) return "rate_limit";
+  if (status >= 500 || status === 408) return "server";
+  if (status === 422 && DUPLICATE_RE.test(`${issue ?? ""} ${name ?? ""} ${msg}`)) return "duplicate";
+  if (status === 400 || status === 422) return "validation";
+  return "api";
+}
+
+// ---------- Resilience configuration ----------
+// Semantics follow the plugin's typescript-configuration-resilience skill (the SDK's retry loop):
+//  - the timeout bounds ONE attempt (we also cover the body read), not the whole call;
+//  - retried statuses are exactly 408/429/500/502/503/504, plus connection/timeout faults;
+//  - wait = min(Retry-After ?? delay * factor^n, cap) * (1 + random * maxJitter) (jitter only adds);
+//  - a write may be re-sent only if the provider can join duplicates: we always resend the SAME
+//    PayPal-Request-Id (the SDK's default gate excludes POST for exactly this reason);
+//  - a 401 invalidates the cached token and re-acquires it once, outside the retry budget.
+
+export interface ResilienceConfig {
+  /** Per-attempt deadline in ms (default 15000). */
+  timeoutMs: number;
+  /** Retries after the first attempt (default 3 => up to 4 sends). */
+  maxRetries: number;
+  baseDelayMs: number;
+  backoffFactor: number;
+  /** Additive fraction, 0..1 (default 0.25). */
+  maxJitter: number;
+  /** Ceiling for any single wait including Retry-After (default 20000; the SDK uses 60000). */
+  maxDelayMs: number;
+}
+
+function envNum(name: string, fallback: number, min: number): number {
+  const raw = process.env[name];
+  const n = raw === undefined || raw === "" ? NaN : Number(raw);
+  return Number.isFinite(n) && n >= min ? n : fallback;
+}
+
+const config: ResilienceConfig = {
+  timeoutMs: envNum("PAYPAL_TIMEOUT_MS", 15_000, 1),
+  maxRetries: envNum("PAYPAL_MAX_RETRIES", 3, 0),
+  baseDelayMs: 1000,
+  backoffFactor: 2,
+  maxJitter: 0.25,
+  maxDelayMs: 20_000,
+};
+
+/** Test/ops hook: override resilience knobs (e.g. tiny delays in the resilience script). */
+export function configureResilience(partial: Partial<ResilienceConfig>): ResilienceConfig {
+  Object.assign(config, partial);
+  return { ...config };
+}
+
+// Test seams: swap the transport / base URL / sleeper without touching callers.
+const realFetch: typeof fetch = (input, init) => fetch(input, init);
+let fetchImpl: typeof fetch = realFetch;
+let baseUrlOverride: string | undefined;
+const realSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+let sleepImpl: (ms: number) => Promise<void> = realSleep;
+
+export const __testing = {
+  setFetch(fn?: typeof fetch) {
+    fetchImpl = fn ?? realFetch;
+  },
+  setBaseUrl(url?: string) {
+    baseUrlOverride = url;
+  },
+  setSleep(fn?: (ms: number) => Promise<void>) {
+    sleepImpl = fn ?? realSleep;
+  },
+};
+
+function baseUrl(): string {
+  return baseUrlOverride ?? paypalBaseUrl();
+}
+
+function parseRetryAfter(h: string | null): number | undefined {
+  if (!h) return undefined;
+  const secs = Number(h);
+  if (Number.isFinite(secs) && secs >= 0) return secs * 1000;
+  const date = Date.parse(h); // HTTP-date form
+  return Number.isFinite(date) ? Math.max(0, date - Date.now()) : undefined;
+}
+
+function backoffMs(retryIndex: number, retryAfterMs?: number): number {
+  const base = Math.min(
+    retryAfterMs ?? config.baseDelayMs * config.backoffFactor ** retryIndex,
+    config.maxDelayMs,
+  );
+  return Math.ceil(base * (1 + Math.random() * config.maxJitter));
+}
+
+/** One bounded attempt: fetch + body read under a single AbortController deadline. */
+async function attemptOnce(
+  url: string,
+  init: RequestInit,
+  method: string,
+  path: string,
+): Promise<{ res: Response; body: unknown }> {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), config.timeoutMs);
+  try {
+    const res = await fetchImpl(url, { ...init, signal: ac.signal, cache: "no-store" });
+    const body = await readBody(res);
+    return { res, body };
+  } catch (e) {
+    throw new PayPalError({
+      status: 0,
+      method,
+      path,
+      body: undefined,
+      kind: ac.signal.aborted ? "timeout" : "network",
+      cause: e,
+    });
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -131,7 +285,7 @@ export async function getAccessToken(): Promise<string> {
   g.__ppTokenInflight = (async () => {
     const { clientId, clientSecret } = credentials();
     const path = "/v1/oauth2/token";
-    const res = await fetch(paypalBaseUrl() + path, {
+    const init: RequestInit = {
       method: "POST",
       headers: {
         Authorization: "Basic " + btoa(`${clientId}:${clientSecret}`),
@@ -139,21 +293,32 @@ export async function getAccessToken(): Promise<string> {
         Accept: "application/json",
       },
       body: "grant_type=client_credentials",
-      cache: "no-store",
-    });
-    const body = await readBody(res);
-    if (!res.ok) {
-      throw new PayPalError({
-        status: res.status,
-        method: "POST",
-        path,
-        body,
-        debugIdHeader: res.headers.get("paypal-debug-id"),
-      });
+    };
+    // Minting a token is idempotent, so faults/429/5xx are safe to retry like any other call.
+    for (let attempt = 0; ; attempt++) {
+      let failure: PayPalError;
+      try {
+        const { res, body } = await attemptOnce(baseUrl() + path, init, "POST", path);
+        if (res.ok) {
+          const { access_token, expires_in } = body as { access_token: string; expires_in: number };
+          g.__ppToken = { token: access_token, expiresAt: Date.now() + expires_in * 1000, env };
+          return access_token;
+        }
+        failure = new PayPalError({
+          status: res.status,
+          method: "POST",
+          path,
+          body,
+          debugIdHeader: res.headers.get("paypal-debug-id"),
+          retryAfterMs: parseRetryAfter(res.headers.get("retry-after")),
+        });
+      } catch (e) {
+        failure = e as PayPalError;
+      }
+      failure.attempts = attempt + 1;
+      if (!failure.retryable || attempt >= config.maxRetries) throw failure;
+      await sleepImpl(backoffMs(attempt, failure.retryAfterMs));
     }
-    const { access_token, expires_in } = body as { access_token: string; expires_in: number };
-    g.__ppToken = { token: access_token, expiresAt: Date.now() + expires_in * 1000, env };
-    return access_token;
   })();
 
   try {
@@ -173,7 +338,7 @@ export interface PayPalRequestOptions {
   /**
    * Idempotency key sent as PayPal-Request-Id on every POST. Pass a deterministic key
    * (e.g. `capture:${authorizationId}`) so a retried app action can't double-charge.
-   * Defaults to a fresh UUID.
+   * Defaults to a fresh UUID, minted ONCE per call and reused by every internal retry.
    */
   requestId?: string;
   headers?: Record<string, string>;
@@ -186,12 +351,19 @@ export async function paypalRequest<T = unknown>(
   path: string,
   opts: PayPalRequestOptions = {},
 ): Promise<T> {
+  // Minted once, outside the loop: every retry carries the identical PayPal-Request-Id, so PayPal
+  // joins duplicates instead of executing the write twice.
   const requestId = method === "POST" ? (opts.requestId ?? crypto.randomUUID()) : undefined;
   const payload =
     opts.rawBody ?? (opts.body === undefined ? undefined : JSON.stringify(opts.body));
+  // Faults (timeout / dropped connection) leave the outcome unknown, so only calls PayPal can
+  // de-duplicate (POST with Request-Id) or that are naturally idempotent (GET) are re-sent on
+  // them. PATCH/PUT/DELETE are re-sent only on 429/503, where PayPal explicitly did not process it.
+  const faultRetrySafe = method === "GET" || method === "POST";
 
-  // One retry on 401 (stale token), one on 429/5xx (same request id => safe).
-  for (let attempt = 0; ; attempt++) {
+  let retries = 0;
+  let refreshedToken = false;
+  for (;;) {
     const token = await getAccessToken();
     const headers: Record<string, string> = {
       Authorization: `Bearer ${token}`,
@@ -201,33 +373,49 @@ export async function paypalRequest<T = unknown>(
       ...(opts.representation === false ? {} : { Prefer: "return=representation" }),
       ...opts.headers,
     };
-    const res = await fetch(paypalBaseUrl() + path, {
-      method,
-      headers,
-      body: payload,
-      cache: "no-store",
-    });
-    const body = await readBody(res);
-    if (res.ok) return body as T;
 
-    const err = new PayPalError({
-      status: res.status,
-      method,
-      path,
-      body,
-      debugIdHeader: res.headers.get("paypal-debug-id"),
-    });
-    if (attempt === 0 && res.status === 401) {
+    let err: PayPalError;
+    try {
+      const { res, body } = await attemptOnce(
+        baseUrl() + path,
+        { method, headers, body: payload },
+        method,
+        path,
+      );
+      if (res.ok) return body as T;
+      err = new PayPalError({
+        status: res.status,
+        method,
+        path,
+        body,
+        debugIdHeader: res.headers.get("paypal-debug-id"),
+        retryAfterMs: parseRetryAfter(res.headers.get("retry-after")),
+      });
+    } catch (e) {
+      err = e as PayPalError;
+    }
+    err.attempts = retries + 1;
+
+    // Stale/expired token: invalidate and re-acquire once; does not consume the retry budget.
+    if (err.status === 401 && !refreshedToken) {
+      refreshedToken = true;
       invalidateAccessToken();
       continue;
     }
-    if (attempt === 0 && err.retryable) {
-      const retryAfter = Number(res.headers.get("retry-after"));
-      const waitMs = Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter * 1000, 5000) : 750;
-      await new Promise((r) => setTimeout(r, waitMs));
+
+    const safe = faultRetrySafe || err.status === 429 || err.status === 503;
+    if (safe && err.retryable && retries < config.maxRetries) {
+      const wait = backoffMs(retries, err.retryAfterMs);
+      console.warn(
+        `[paypal] ${method} ${path} ${err.status || err.kind} -> retry ${retries + 1}/${config.maxRetries} in ${wait}ms` +
+          (requestId ? ` (PayPal-Request-Id ${requestId})` : "") +
+          (err.debugId ? ` (debug_id ${err.debugId})` : ""),
+      );
+      retries++;
+      await sleepImpl(wait);
       continue;
     }
-    console.error("[paypal]", err.message);
+    console.error("[paypal]", err.message, `(attempts ${err.attempts})`);
     throw err;
   }
 }
