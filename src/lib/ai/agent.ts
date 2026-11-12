@@ -51,25 +51,37 @@ export async function decideAgentBid(p: Paddle, lot: Lot): Promise<AgentDecision
   }
 
   if (claudeEnabled()) {
-    const reply = await callClaude({
-      system:
-        "You decide for an absentee bidder at a live auction. Given the bidder's instruction and one lot, " +
-        'reply ONLY with JSON {"match":boolean,"bid":boolean,"reasoning":string}. match = the instruction wants this lot. ' +
-        "bid = match and bidding the stated amount now fits the instruction. reasoning: one friendly sentence, under 25 words.",
-      user:
-        `Instruction: "${instruction}"\nLot: ${lot.title} — ${lot.description}\n` +
-        `Next bid would be ${money(amount)} (code-checked to be within the bidder's ${money(cap)} limit).`,
-      maxTokens: 120,
-      timeoutMs: 4000,
-    });
+    // A live room can't wait on a slow or rate-limited model: if the AI hasn't answered in 3.5 s the
+    // deterministic keyword match below decides, so the agent never bids after the hammer.
+    const reply = await Promise.race([
+      callClaude({
+        system:
+          "You decide for an absentee bidder at a live auction. Given the bidder's instruction and one lot, " +
+          'reply ONLY with JSON {"match":boolean,"bid":boolean,"reasoning":string}. match = the instruction wants this lot. ' +
+          "bid = match and bidding the stated amount now fits the instruction. reasoning: one friendly sentence, under 25 words.",
+        user:
+          `Instruction: "${instruction}"\nLot: ${lot.title} — ${lot.description}\n` +
+          `Next bid would be ${money(amount)} (code-checked to be within the bidder's ${money(cap)} limit).`,
+        maxTokens: 120,
+        timeoutMs: 3500,
+        fast: true,
+      }),
+      new Promise<null>((r) => setTimeout(() => r(null), 3500)),
+    ]);
     const j = extractJson<{ match?: unknown; bid?: unknown; reasoning?: unknown }>(reply);
     if (j && typeof j.match === "boolean" && typeof j.bid === "boolean") {
       const reasoning = typeof j.reasoning === "string" && j.reasoning.trim() ? j.reasoning.trim().slice(0, 240) : "";
-      const bid = j.match && j.bid;
+      // The model only judges whether the lot matches the instruction (a keyword match also counts, so a
+      // weaker model can't miss an explicit "the quilt"). Whether to bid is code: the amount is already
+      // checked against the bidder's own cap and the hold above, so the model never vetoes money.
+      const bid = j.match || heuristicMatch(instruction, lot);
+      const aiAgrees = j.match && j.bid;
       return {
         bid,
         amount,
-        reasoning: reasoning || (bid ? `Bidding ${money(amount)} on ${lot.title}.` : `Passing on ${lot.title}.`),
+        reasoning: bid
+          ? (aiAgrees && reasoning) || `${lot.title} is what I was sent for, and ${money(amount)} is inside my ${money(cap)} limit. Raising the paddle.`
+          : reasoning || `Passing on ${lot.title}.`,
       };
     }
   }

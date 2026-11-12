@@ -493,14 +493,18 @@ function hammerLot(lot: Lot): void {
 
 // ---------------------------------------------------------------- absentee agents
 
-const ag = globalThis as unknown as { __gtAgentBusy?: Set<string>; __gtAgentAgain?: Set<string> };
+const ag = globalThis as unknown as { __gtAgentBusy?: Set<string>; __gtAgentAgain?: Set<string>; __gtAgentLot?: Map<string, string> };
 
 function triggerAgents(lotId: string): void {
   const busy = (ag.__gtAgentBusy ??= new Set());
   const again = (ag.__gtAgentAgain ??= new Set());
+  const latest = (ag.__gtAgentLot ??= new Map());
   for (const p of getState().paddles) {
     if (p.kind !== "agent" || p.status !== "held") continue;
     const key = `${currentRoom()}:${p.id}`;
+    // Remember the newest lot this agent should look at: a re-run triggered while it was busy must
+    // evaluate the lot that just opened, not the one it was thinking about.
+    latest.set(key, lotId);
     if (busy.has(key)) {
       again.add(key);
       continue;
@@ -520,8 +524,11 @@ async function runAgent(paddleId: string, lotId: string): Promise<void> {
       again.delete(key);
       const s = getState();
       const p = s.paddles.find((x) => x.id === paddleId);
-      const lot = s.lots.find((l) => l.id === lotId);
-      if (!p || !p.agent || p.status !== "held" || !lot || lot.status !== "open" || s.status !== "live") return;
+      const lot = s.lots.find((l) => l.id === (ag.__gtAgentLot?.get(key) ?? lotId));
+      if (!p || !p.agent || p.status !== "held" || !lot || lot.status !== "open" || s.status !== "live") {
+        if (again.has(key)) continue; // a newer lot was triggered meanwhile: look at that one
+        return;
+      }
       if (lot.highPaddleId === p.id) return;
 
       const d = await decideAgentBid(p, lot);
