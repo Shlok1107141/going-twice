@@ -29,6 +29,13 @@ export const PAGES = [
   { href: "/timeline", label: "Timeline" },
 ] as const;
 
+/** Outside an auction room: join one, watch the demo, or learn how paying works. */
+export const LOBBY_PAGES = [
+  { href: "/join", label: "Join auction" },
+  { href: "/demo", label: "Demo" },
+  { href: "/paypal", label: "PayPal" },
+] as const;
+
 export function Wordmark({ size = "md", tone = "ink" }: { size?: "md" | "lg"; tone?: "ink" | "light" }) {
   const text = size === "lg" ? "text-3xl" : "text-[22px]";
   return (
@@ -64,7 +71,7 @@ export function SiteNav() {
           )}
         </div>
         <ul className="-mx-2 flex w-full items-center justify-between sm:mx-0 sm:w-auto sm:justify-end sm:gap-1">
-          {PAGES.map((p) => {
+          {(room ? PAGES : LOBBY_PAGES).map((p) => {
             const active = pathname === p.href;
             return (
               <li key={p.href}>

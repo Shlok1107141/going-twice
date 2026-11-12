@@ -3,7 +3,8 @@
 import { DemoRun } from "@/components/DemoRun";
 import { NightInNumbers } from "@/components/proof/NightInNumbers";
 import { CopyId, PayPalProof } from "@/components/proof/PayPalProof";
-import { RoomGate } from "@/components/RoomGate";
+import { PayPalSetup } from "@/components/PayPalSetup";
+import { useSyncExternalStore } from "react";
 import { SandboxBadge } from "@/components/SandboxBadge";
 import { useRoom, withRoom } from "@/components/SiteNav";
 import { PageHeader, panel, Pill, SectionTitle } from "@/components/ui";
@@ -104,12 +105,18 @@ function Bidders({ state }: { state: State }) {
 }
 
 export default function PayPalPage() {
-  return (
-    <RoomGate>
-      <PayPalTrail />
-    </RoomGate>
+  // Inside a room: that auction's PayPal trail. Outside one: how to set up PayPal or a card.
+  const room = useRoom();
+  const ready = useSyncExternalStore(
+    noop,
+    () => true,
+    () => false,
   );
+  if (!ready) return <main className="flex-1" aria-busy="true" />;
+  return room ? <PayPalTrail /> : <PayPalSetup />;
 }
+
+const noop = () => () => {};
 
 function PayPalTrail() {
   const room = useRoom();

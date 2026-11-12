@@ -1,11 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import type { AutopilotStatus } from "@/lib/ai/autopilot";
 import { NightInNumbers } from "@/components/proof/NightInNumbers";
 import { CopyId } from "@/components/proof/PayPalProof";
-import { RoomGate } from "@/components/RoomGate";
 import { SandboxBadge } from "@/components/SandboxBadge";
 import { useRoom, withRoom } from "@/components/SiteNav";
 import { btn, Pill } from "@/components/ui";
@@ -316,12 +315,35 @@ function UnderTheHood({ state, auto, room }: { state: State; auto: AutopilotStat
 }
 
 export default function DemoPage() {
-  return (
-    <RoomGate>
-      <Demo />
-    </RoomGate>
+  const room = useRoom();
+  const ready = useSyncExternalStore(
+    noop,
+    () => true,
+    () => false,
   );
+  // Opened without a room (the Demo tab): make a fresh demo room and come back with it.
+  useEffect(() => {
+    if (!ready || room) return;
+    fetch("/api/room/new", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j: { room?: string }) => {
+        if (j.room) window.location.replace(`/demo?room=${encodeURIComponent(j.room)}`);
+      })
+      .catch(() => {});
+  }, [ready, room]);
+  if (!ready || !room) {
+    return (
+      <main className="flex-1 px-4 py-16 text-center">
+        <p role="status" className="anim-breathe text-muted">
+          Opening a demo auction room…
+        </p>
+      </main>
+    );
+  }
+  return <Demo />;
 }
+
+const noop = () => () => {};
 
 function Demo() {
   const room = useRoom();
