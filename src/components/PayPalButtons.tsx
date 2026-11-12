@@ -100,9 +100,9 @@ export function PayPalButtons({
   return (
     <div>
       <div ref={container} className="min-h-[120px]" aria-busy={busy} />
-      {busy && <p className="mt-2 text-center text-sm font-semibold text-stone-600">Confirming your hold&hellip;</p>}
+      {busy && <p className="mt-2 text-center text-sm text-muted anim-breathe">Confirming your hold&hellip;</p>}
       {error && (
-        <p role="alert" className="mt-2 rounded-lg bg-rose-100 p-3 text-sm font-semibold text-rose-900">
+        <p role="alert" className="mt-2 rounded-md bg-danger-soft px-4 py-3 text-sm font-medium text-danger">
           {error}
         </p>
       )}

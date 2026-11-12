@@ -10,7 +10,7 @@ export function QrCode({ value, label, className = "" }: { value: string; label:
   useEffect(() => {
     if (!value) return;
     let cancelled = false;
-    QRCode.toDataURL(value, { margin: 1, width: 360, errorCorrectionLevel: "M", color: { dark: "#1c1917", light: "#ffffff" } })
+    QRCode.toDataURL(value, { margin: 1, width: 360, errorCorrectionLevel: "M", color: { dark: "#141413", light: "#faf9f5" } })
       .then((url) => {
         if (!cancelled) setSrc(url);
       })
@@ -22,7 +22,7 @@ export function QrCode({ value, label, className = "" }: { value: string; label:
     };
   }, [value]);
 
-  if (!src) return <div className={`animate-pulse rounded-lg bg-stone-200 ${className}`} aria-hidden />;
+  if (!src) return <div className={`animate-pulse rounded-md bg-sunken ${className}`} aria-hidden />;
   // eslint-disable-next-line @next/next/no-img-element
-  return <img src={src} alt={label} className={`rounded-lg bg-white ${className}`} />;
+  return <img src={src} alt={label} className={`rounded-md bg-canvas ${className}`} />;
 }

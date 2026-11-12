@@ -8,20 +8,20 @@ import "./timeline.css";
 
 import type { Scheduler } from "@bryntum/scheduler";
 import { BryntumScheduler, type BryntumSchedulerProps } from "@bryntum/scheduler-react";
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { post, roomParam, withRoomQuery } from "@/lib/client/api";
 import type { State } from "@/lib/client/types";
 import { DAY, NIGHT_ID, buildModel, sampleState, type Kind, type Model, type Rec } from "./model";
+import { btn, Eyebrow } from "@/components/ui";
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 type Zoom = "tonight" | "lifetime";
 
 const levelStyle: Record<Rec["level"], string> = {
-  urgent: "border-red-300 bg-red-50 text-red-950",
-  soon: "border-amber-300 bg-amber-50 text-amber-950",
-  amber: "border-amber-400 bg-amber-100/70 text-amber-950",
+  urgent: "border-danger/30 bg-danger-soft text-danger",
+  soon: "border-clay/30 bg-clay-soft/70 text-clay-ink",
+  amber: "border-line-strong bg-sunken text-ink",
 };
 const levelLabel: Record<Rec["level"], string> = { urgent: "Act now", soon: "Soon", amber: "Hammered" };
 
@@ -177,22 +177,20 @@ export default function TimelineView() {
   const roomLabel = room ? room.toUpperCase() : "MAIN";
 
   return (
-    <main className="mx-auto flex w-full max-w-[1400px] flex-1 flex-col gap-5 px-5 py-8">
-      <header className="flex flex-wrap items-end justify-between gap-4">
+    <main className="mx-auto flex w-full max-w-[1400px] flex-1 flex-col gap-8 px-4 pb-16 pt-8 sm:px-6">
+      <header className="flex flex-wrap items-end justify-between gap-6 border-b border-line pb-6">
         <div>
-          <Link href={`/${room ? `?room=${encodeURIComponent(room)}` : ""}`} className="text-sm text-stone-600 underline-offset-4 hover:underline">
-            ← Going Twice
-          </Link>
-          <h1 className="mt-1 font-serif text-4xl font-black tracking-tight text-stone-900">Hold Timeline</h1>
-          <p className="mt-1 max-w-2xl text-stone-700">
-            Every paddle is a PayPal authorization hold: <b>3 days of honor</b>, then valid until <b>day 29</b>, then released. Capture in time, or reauthorize.
+          <Eyebrow>Settlement</Eyebrow>
+          <h1 className="display mt-2 text-4xl text-ink sm:text-5xl">Hold Timeline</h1>
+          <p className="mt-3 max-w-2xl leading-relaxed text-ink-2">
+            Every paddle is a PayPal authorization hold: <span className="font-medium text-ink">3 days of honor</span>, then valid until <span className="font-medium text-ink">day 29</span>, then released. Capture in time, or reauthorize.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <span className="rounded-full border border-stone-300 bg-white/70 px-3 py-1 text-xs font-semibold tracking-wide text-stone-700">ROOM {roomLabel}</span>
-          <div role="group" aria-label="Zoom" className="inline-flex overflow-hidden rounded-full border border-stone-400 bg-white/80 text-sm font-semibold">
+          <span className="rounded-full border border-line bg-surface px-3 py-1 font-mono text-xs text-ink-2">Room {roomLabel}</span>
+          <div role="group" aria-label="Zoom" className="inline-flex rounded-md border border-line bg-surface p-1 text-sm">
             {([["tonight", "Tonight (minutes)"], ["lifetime", "Hold lifetime (days)"]] as const).map(([z, label]) => (
-              <button key={z} onClick={() => onZoom(z)} aria-pressed={zoom === z} className={`px-4 py-2 ${zoom === z ? "bg-stone-900 text-amber-100" : "text-stone-800 hover:bg-amber-100"}`}>
+              <button key={z} onClick={() => onZoom(z)} aria-pressed={zoom === z} className={`rounded-sm px-3.5 py-1.5 transition-colors ${zoom === z ? "bg-ink text-canvas" : "text-ink-2 hover:bg-sunken"}`}>
                 {label}
               </button>
             ))}
@@ -201,26 +199,28 @@ export default function TimelineView() {
       </header>
 
       {isSample && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-amber-500 bg-amber-100 px-4 py-2 text-sm text-amber-950">
-          <span><b>SAMPLE DATA.</b> Invented paddles and holds of mixed age, so every risk state is visible. Nothing here touches your auction.</span>
-          <button onClick={clearSample} className="rounded-full border border-amber-700 px-3 py-1 font-semibold hover:bg-amber-200">Back to live data</button>
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed border-clay/50 bg-clay-soft/50 px-4 py-3 text-sm text-ink-2">
+          <span><span className="font-medium text-clay-ink">Sample data.</span> Invented paddles and holds of mixed age, so every risk state is visible. Nothing here touches your auction.</span>
+          <button onClick={clearSample} className={btn.small}>Back to live data</button>
         </div>
       )}
-      {error && !state && <p className="rounded-xl border border-red-300 bg-red-50 px-4 py-2 text-sm text-red-900">Can not reach the auction: {error}. Retrying…</p>}
+      {error && !state && <p role="status" className="rounded-md bg-danger-soft px-4 py-3 text-sm text-danger">Can not reach the auction: {error}. Retrying…</p>}
 
       {empty ? (
-        <section className="grid place-items-center rounded-2xl border border-stone-300 bg-white/70 px-6 py-20 text-center">
+        <section className="grid place-items-center rounded-xl border border-line bg-surface px-6 py-24 text-center shadow-soft">
           <div className="max-w-md">
-            <div className="text-5xl">⏳</div>
-            <h2 className="mt-3 font-serif text-2xl font-bold text-stone-900">No holds on the clock yet</h2>
-            <p className="mt-2 text-stone-700">Once paddles register and lots open in room {roomLabel}, their authorization holds appear here and tick toward the honor period and expiry.</p>
-            <button onClick={loadSample} className="mt-6 rounded-full bg-stone-900 px-6 py-3 font-semibold text-amber-100 hover:bg-stone-700">Load sample (fake data)</button>
+            <div className="rule-ornament mx-auto w-40" aria-hidden>
+              <span className="h-2 w-2 rotate-45 bg-clay" />
+            </div>
+            <h2 className="display mt-6 text-4xl text-ink">No holds on the clock yet</h2>
+            <p className="mt-3 leading-relaxed text-ink-2">Once paddles register and lots open in room {roomLabel}, their authorization holds appear here and tick toward the honor period and expiry.</p>
+            <button onClick={loadSample} className={`${btn.primary} mt-8`}>Load sample (fake data)</button>
           </div>
         </section>
       ) : (
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
-          <section aria-label="Hold timeline" className="min-w-0 overflow-hidden rounded-2xl border border-stone-300 bg-white shadow-sm">
-            <div className="tl-legend flex flex-wrap gap-x-5 gap-y-1 border-b border-stone-200 bg-stone-50 px-4 py-2 text-xs text-stone-700">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <section aria-label="Hold timeline" className="min-w-0 overflow-hidden rounded-xl border border-line bg-surface shadow-soft">
+            <div className="tl-legend flex flex-wrap gap-x-6 gap-y-2 border-b border-line bg-canvas px-5 py-3 text-xs text-ink-2">
               <span><i className="tl-sw tl-sw-honor" />Honor period (3 d)</span>
               <span><i className="tl-sw tl-sw-validity" />Valid to expiry (29 d)</span>
               <span><i className="tl-sw tl-sw-bid" />Bid</span>
@@ -234,23 +234,23 @@ export default function TimelineView() {
           </section>
 
           <aside aria-label="Settlement risk" className="flex flex-col gap-3">
-            <div className="rounded-2xl border border-stone-300 bg-white/80 p-4">
-              <h2 className="font-serif text-2xl font-bold text-stone-900">Settlement risk</h2>
-              <p className="mt-1 text-sm text-stone-600">
+            <div className="rounded-xl border border-line bg-surface p-6 shadow-soft">
+              <h2 className="display text-2xl text-ink">Settlement risk</h2>
+              <p className="mt-2 text-sm leading-relaxed text-muted">
                 {model && model.recs.length === 0 ? "Nothing needs attention." : `${model?.recs.length ?? 0} item(s) to look at.`} {model?.healthy ? `${model.healthy} hold(s) comfortably inside the honor period.` : ""}
               </p>
             </div>
             {model?.recs.map((r) => (
-              <article key={r.id} className={`rounded-xl border p-3 ${levelStyle[r.level]}`}>
-                <div className="text-[11px] font-bold uppercase tracking-wider opacity-70">{levelLabel[r.level]}</div>
-                <h3 className="font-semibold">{r.title}</h3>
-                <p className="mt-0.5 text-sm opacity-90">{r.detail}</p>
+              <article key={r.id} className={`rounded-lg border p-4 ${levelStyle[r.level]}`}>
+                <div className="eyebrow opacity-80">{levelLabel[r.level]}</div>
+                <h3 className="mt-1 font-medium text-ink">{r.title}</h3>
+                <p className="mt-1 text-sm leading-relaxed text-ink-2">{r.detail}</p>
                 {r.action === "close" && (
                   <button
                     onClick={runClose}
                     disabled={busy || isSample || !model.closeReady}
                     title={isSample ? "Sample data: nothing to close" : !model.closeReady ? "Available once the auction is live and every lot is sold or passed" : "POST /api/close"}
-                    className="mt-2 rounded-full bg-stone-900 px-4 py-1.5 text-sm font-semibold text-amber-100 enabled:hover:bg-stone-700 disabled:opacity-40"
+                    className={`${btn.primary} mt-3 px-4 py-2 text-sm`}
                   >
                     {busy ? "Closing…" : "Capture & close auction"}
                   </button>
@@ -258,13 +258,13 @@ export default function TimelineView() {
               </article>
             ))}
             {model && model.recs.length === 0 && (
-              <p className="rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-950">All open holds are healthy. Check back as the honor clock runs.</p>
+              <p className="rounded-lg border border-sage/30 bg-sage-soft p-4 text-sm text-sage">All open holds are healthy. Check back as the honor clock runs.</p>
             )}
-            {msg && <p role="status" className="text-sm text-stone-800">{msg}</p>}
-            <p className="text-xs text-stone-500">
+            {msg && <p role="status" className="text-sm text-ink-2">{msg}</p>}
+            <p className="text-xs leading-relaxed text-muted">
               Reauthorization is shown as advice only; this page never moves money except through the existing close endpoint, and only when every lot is decided.
             </p>
-            {!isSample && <button onClick={loadSample} className="self-start text-xs text-stone-500 underline underline-offset-4 hover:text-stone-800">Load sample data</button>}
+            {!isSample && <button onClick={loadSample} className="self-start text-xs text-muted underline underline-offset-4 hover:text-ink">Load sample data</button>}
           </aside>
         </div>
       )}

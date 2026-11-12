@@ -1,90 +1,219 @@
 @import "tailwindcss";
 
+/*
+ * Going Twice design tokens.
+ * Warm paper canvas, near-black ink, one restrained clay accent. Serif display (Cormorant Garamond) for
+ * headings and hammer prices; Inter for interface text. Spacing follows 4/8/12/16/24/32/48/64/96
+ * (Tailwind 1/2/3/4/6/8/12/16/24). Radii are soft, shadows are faint, rules are hairlines.
+ */
 :root {
-  --background: #faf6ee;
-  --foreground: #1c1917;
+  --canvas: #faf9f5;
+  --surface: #ffffff;
+  --sunken: #f2f0e8;
+  --ink: #141413;
+  --ink-2: #3d3d3a;
+  --muted: #6b6a63;
+  --line: #e5e2d8;
+  --line-strong: #cfcabd;
+  --clay: #c15f3c;
+  --clay-ink: #a9512f;
+  --clay-soft: #f6e7de;
+  --clay-on-dark: #d9a083;
+  --sage: #3f6b4e;
+  --sage-soft: #e5eee7;
+  --danger: #a23b2e;
+  --danger-soft: #f7e4e0;
+  --agent: #4b5a8c;
+  --agent-soft: #e8ebf4;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+  --space-9: 96px;
+
+  --nav-h: 3.5rem;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-serif: var(--font-display), Georgia, "Times New Roman", serif;
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-sunken: var(--sunken);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-clay: var(--clay);
+  --color-clay-ink: var(--clay-ink);
+  --color-clay-soft: var(--clay-soft);
+  --color-clay-on-dark: var(--clay-on-dark);
+  --color-sage: var(--sage);
+  --color-sage-soft: var(--sage-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-agent: var(--agent);
+  --color-agent-soft: var(--agent-soft);
+
+  --font-sans: var(--font-ui), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-display), "Iowan Old Style", Georgia, serif;
+  --font-mono: ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace;
+
+  --text-eyebrow: 0.75rem;
+  --text-eyebrow--letter-spacing: 0.14em;
+  --text-eyebrow--line-height: 1rem;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-2xl: 28px;
+
+  --shadow-soft: 0 1px 2px rgb(20 20 19 / 0.04), 0 4px 16px rgb(20 20 19 / 0.04);
+  --shadow-lift: 0 2px 4px rgb(20 20 19 / 0.05), 0 12px 32px rgb(20 20 19 / 0.08);
+}
+
+html {
+  background: var(--canvas);
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-ui), ui-sans-serif, system-ui, sans-serif;
+  font-feature-settings: "cv11", "ss01";
   overflow-x: hidden;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--clay-soft);
+  color: var(--ink);
 }
 
 :focus-visible {
-  outline: 3px solid #b45309;
-  outline-offset: 2px;
+  outline: 2px solid var(--clay-ink);
+  outline-offset: 3px;
+  border-radius: 4px;
 }
 
-/* Gentle auction-house paper texture + warm vignette */
-.paper {
+/* Money and counters: lining, tabular figures so digits never jump. */
+.num {
+  font-variant-numeric: lining-nums tabular-nums;
+  font-feature-settings: "lnum", "tnum";
+}
+
+/* Display serif headings: regular weight, tight leading, slight negative tracking. */
+.display {
+  font-family: var(--font-display), Georgia, serif;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.05;
+  font-variant-numeric: lining-nums;
+}
+
+.eyebrow {
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* Hairline divider with a small centered ornament. */
+.rule-ornament {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--line-strong);
+}
+.rule-ornament::before,
+.rule-ornament::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: currentColor;
+}
+
+/* Stage (projector) runs in a dark theatre palette. */
+.theatre {
+  --t-bg: #141413;
+  --t-panel: #1d1d1b;
+  --t-line: #33322e;
+  --t-text: #faf9f5;
+  --t-muted: #a7a59c;
   background:
-    radial-gradient(1200px 600px at 10% -10%, rgba(251, 191, 36, 0.14), transparent 60%),
-    radial-gradient(900px 500px at 110% 110%, rgba(180, 83, 9, 0.09), transparent 60%),
-    var(--background);
+    radial-gradient(1400px 700px at 30% -20%, rgb(193 95 60 / 0.10), transparent 60%),
+    var(--t-bg);
+  color: var(--t-text);
 }
 
-@keyframes gt-pop {
-  0% { transform: scale(0.82); opacity: 0; }
-  60% { transform: scale(1.06); opacity: 1; }
-  100% { transform: scale(1); }
+/* ---------- Motion (all disabled under prefers-reduced-motion) ---------- */
+@keyframes gt-rise {
+  from { transform: translateY(8px); opacity: 0; }
+  to { transform: none; opacity: 1; }
 }
-@keyframes gt-pulse {
-  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(217, 119, 6, 0.55); }
-  50% { transform: scale(1.015); box-shadow: 0 0 0 18px rgba(217, 119, 6, 0); }
-}
-@keyframes gt-pulse-fast {
-  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(194, 65, 12, 0.65); }
-  50% { transform: scale(1.025); box-shadow: 0 0 0 22px rgba(194, 65, 12, 0); }
+@keyframes gt-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 @keyframes gt-bump {
-  0% { transform: scale(1.12); color: #b45309; }
-  100% { transform: scale(1); }
+  0% { transform: translateY(6px); opacity: 0.2; }
+  100% { transform: none; opacity: 1; }
 }
-@keyframes gt-slide-in {
-  from { transform: translateY(-14px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
+@keyframes gt-breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
 }
-@keyframes gt-confetti {
-  0% { background-position: 0 0; }
-  100% { background-position: 0 40px; }
+@keyframes gt-sweep {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@keyframes gt-sold {
+  0% { transform: scale(0.96); opacity: 0; letter-spacing: 0.3em; }
+  100% { transform: none; opacity: 1; letter-spacing: 0.08em; }
+}
+@keyframes gt-glint {
+  0% { background-position: -150% 0; }
+  100% { background-position: 250% 0; }
 }
 @keyframes gt-tap {
   0% { transform: scale(1); }
-  30% { transform: scale(0.94); }
+  30% { transform: scale(0.97); }
   100% { transform: scale(1); }
 }
 @keyframes gt-speak {
-  0%, 100% { transform: scaleY(0.4); }
+  0%, 100% { transform: scaleY(0.35); }
   50% { transform: scaleY(1); }
 }
 
-.anim-pop { animation: gt-pop 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
-.anim-pulse { animation: gt-pulse 1.6s ease-in-out infinite; }
-.anim-pulse-fast { animation: gt-pulse-fast 0.9s ease-in-out infinite; }
-.anim-bump { animation: gt-bump 0.45s ease-out both; }
-.anim-slide-in { animation: gt-slide-in 0.35s ease-out both; }
-.anim-tap { animation: gt-tap 0.4s ease-out; }
-.anim-sold {
-  background-image: radial-gradient(circle at 20% 30%, rgba(255, 255, 255, 0.35) 2px, transparent 3px),
-    radial-gradient(circle at 70% 60%, rgba(255, 255, 255, 0.35) 2px, transparent 3px),
-    radial-gradient(circle at 45% 85%, rgba(255, 255, 255, 0.3) 2px, transparent 3px);
-  background-size: 40px 40px;
-  animation: gt-pop 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.2) both, gt-confetti 1.2s linear infinite;
-}
+.anim-rise { animation: gt-rise 0.5s var(--ease) both; }
+.anim-fade { animation: gt-fade 0.6s var(--ease) both; }
+.anim-bump { animation: gt-bump 0.35s var(--ease) both; }
+.anim-breathe { animation: gt-breathe 1.6s ease-in-out infinite; }
+.anim-breathe-fast { animation: gt-breathe 0.8s ease-in-out infinite; }
+.anim-sweep { transform-origin: left; animation: gt-sweep 0.6s var(--ease) both; }
+.anim-sold { animation: gt-sold 0.9s var(--ease) both; }
+.anim-tap { animation: gt-tap 0.35s ease-out; }
 .speak-bar { transform-origin: bottom; animation: gt-speak 0.7s ease-in-out infinite; }
+.glint {
+  background-image: linear-gradient(100deg, transparent 30%, rgb(255 255 255 / 0.22) 50%, transparent 70%);
+  background-size: 60% 100%;
+  background-repeat: no-repeat;
+  animation: gt-glint 2.4s var(--ease) 0.4s both;
+}
 
 @media (prefers-reduced-motion: reduce) {
-  .anim-pop, .anim-pulse, .anim-pulse-fast, .anim-bump, .anim-slide-in, .anim-tap, .anim-sold, .speak-bar {
-    animation: none;
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
   }
 }

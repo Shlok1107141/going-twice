@@ -3,45 +3,97 @@
 import { useEffect } from "react";
 import { QrCode } from "@/components/QrCode";
 import { SandboxBadge } from "@/components/SandboxBadge";
+import { Wordmark } from "@/components/SiteNav";
 import { typeConfig } from "@/lib/auction/auctionTypes";
 import { post } from "@/lib/client/api";
-import { clock, findPaddle, headroom, isBidEvent, money, stageLot } from "@/lib/client/format";
-import type { AuctionEvent, Lot, State } from "@/lib/client/types";
+import { clock, findPaddle, headroom, money, stageLot } from "@/lib/client/format";
+import type { AuctionEvent, Lot, Paddle, State } from "@/lib/client/types";
 import { useAuctionState } from "@/lib/client/useAuctionState";
 import { useOrigin } from "@/lib/client/useOrigin";
 import { useSpeech } from "@/lib/client/useSpeech";
 
 const PERSONA = "Gus";
+const PHASES = ["Bidding", "Going once", "Going twice", "Sold"] as const;
 
-type Banner = { label: string; cls: string; anim: string };
-
-function bannerFor(state: State, lot: Lot | undefined): Banner {
-  if (state.status === "closed") return { label: "AUCTION CLOSED", cls: "bg-stone-900 text-amber-100", anim: "anim-pop" };
-  if (!lot) return { label: "DOORS OPEN", cls: "bg-stone-200 text-stone-800", anim: "" };
-  if (lot.status === "sold") return { label: "SOLD!", cls: "bg-emerald-700 text-white", anim: "anim-sold" };
-  if (lot.status === "unsold") return { label: "PASSED", cls: "bg-stone-300 text-stone-800", anim: "anim-pop" };
-  if (lot.status === "pending") return { label: state.status === "lobby" ? "DOORS OPEN" : "UP NEXT", cls: "bg-stone-200 text-stone-800", anim: "" };
-  switch (lot.phase) {
-    case "going-once":
-      return { label: "GOING ONCE…", cls: "bg-amber-500 text-stone-950", anim: "anim-pulse" };
-    case "going-twice":
-      return { label: "GOING TWICE…", cls: "bg-orange-700 text-white", anim: "anim-pulse-fast" };
-    case "sold":
-      return { label: "SOLD!", cls: "bg-emerald-700 text-white", anim: "anim-sold" };
-    default:
-      return { label: "BIDDING", cls: "bg-amber-200 text-amber-950", anim: "anim-pop" };
-  }
+/** Index into PHASES for the lot on stage, or -1 when no lot is in play. */
+function phaseIndex(lot: Lot | undefined): number {
+  if (!lot) return -1;
+  if (lot.status === "sold") return 3;
+  if (lot.status !== "open") return -1;
+  return { bidding: 0, "going-once": 1, "going-twice": 2, sold: 3 }[lot.phase];
 }
 
-const eventStyle: Record<AuctionEvent["type"], string> = {
-  bid: "text-stone-900",
-  "agent-bid": "text-indigo-900",
-  stall: "text-stone-500",
-  "going-once": "text-amber-800",
-  "going-twice": "text-orange-800",
-  sold: "text-emerald-800 font-bold",
-  system: "text-stone-500",
+function statusLine(state: State, lot: Lot | undefined): string {
+  if (state.status === "closed") return "The auction has closed";
+  if (!lot) return "Doors open";
+  if (lot.status === "open") return "Now bidding";
+  if (lot.status === "sold") return "Sold";
+  if (lot.status === "unsold") return "Passed";
+  return state.status === "lobby" ? "Doors open · up first" : "Up next";
+}
+
+const eventTone: Record<AuctionEvent["type"], string> = {
+  bid: "text-[var(--t-text)]",
+  "agent-bid": "text-[#b9c2e0]",
+  stall: "text-[var(--t-muted)]",
+  "going-once": "text-clay-on-dark",
+  "going-twice": "text-clay-on-dark",
+  sold: "text-[#a9cdb3]",
+  system: "text-[var(--t-muted)]",
 };
+
+const eyebrowDark = "eyebrow text-[var(--t-muted)] text-[clamp(0.7rem,0.75vw,0.95rem)]";
+
+function PhaseTrack({ lot }: { lot: Lot | undefined }) {
+  const at = phaseIndex(lot);
+  return (
+    <ol aria-label="Lot phase" className="grid grid-cols-4 gap-[0.8vw]">
+      {PHASES.map((label, i) => {
+        const done = at > i;
+        const current = at === i;
+        const sold = current && i === 3;
+        return (
+          <li key={label} aria-current={current ? "step" : undefined}>
+            <div className="relative h-[3px] overflow-hidden rounded-full bg-[var(--t-line)]">
+              {(done || current) && (
+                <div
+                  key={`${label}-${current}`}
+                  className={`anim-sweep absolute inset-0 rounded-full ${current ? (sold ? "bg-[#a9cdb3]" : "bg-clay") : "bg-[var(--t-text)]/70"}`}
+                />
+              )}
+            </div>
+            <p
+              className={`mt-[0.6vw] text-[clamp(0.8rem,1vw,1.3rem)] transition-colors ${
+                current ? (sold ? "font-medium text-[#a9cdb3]" : "font-medium text-clay-on-dark") : done ? "text-[var(--t-text)]/80" : "text-[var(--t-muted)]/70"
+              } ${current && i === 1 ? "anim-breathe" : current && i === 2 ? "anim-breathe-fast" : ""}`}
+            >
+              {label}
+            </p>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+function RosterRow({ p, leading }: { p: Paddle; leading: boolean }) {
+  const used = p.holdAmount > 0 ? Math.min(100, (p.committed / p.holdAmount) * 100) : 0;
+  return (
+    <li className={`grid grid-cols-[auto_1fr_auto] items-center gap-x-[0.8vw] gap-y-[0.3vw] rounded-md px-[0.6vw] py-[0.45vw] ${leading ? "bg-clay/15" : ""}`}>
+      <span className="num display min-w-[2.2ch] text-center text-[clamp(1.1rem,1.5vw,2rem)] leading-none text-clay-on-dark">{p.number}</span>
+      <span className="min-w-0 truncate text-[clamp(0.85rem,1vw,1.35rem)] text-[var(--t-text)]">
+        {p.name}
+        {p.kind === "agent" && <span className="ml-2 text-[0.75em] text-[#b9c2e0]">AI</span>}
+      </span>
+      <span className="num text-right text-[clamp(0.75rem,0.9vw,1.2rem)] text-[var(--t-muted)]">
+        {p.status === "pending" ? "awaiting hold" : p.status === "held" ? `${money(headroom(p))} left` : p.status === "captured" ? "charged" : "released"}
+      </span>
+      <div className="col-span-3 col-start-1 ml-[calc(2.2ch+0.8vw)] h-[3px] overflow-hidden rounded-full bg-[var(--t-line)]" aria-hidden>
+        {p.status === "held" && <div className="h-full rounded-full bg-[var(--t-text)]/70 transition-[width] duration-500" style={{ width: `${used}%` }} />}
+      </div>
+    </li>
+  );
+}
 
 export default function StagePage() {
   const { state, error } = useAuctionState(800);
@@ -61,225 +113,251 @@ export default function StagePage() {
 
   if (!state) {
     return (
-      <main className="grid min-h-screen place-items-center">
-        <p className="font-serif text-4xl text-stone-600">{error ? "Reconnecting to the auction house…" : "Opening the auction house…"}</p>
+      <main className="theatre grid min-h-screen place-items-center">
+        <div className="text-center">
+          <Wordmark size="lg" tone="light" />
+          <p className="display anim-breathe mt-6 text-3xl italic text-[var(--t-muted)]">
+            {error ? "Reconnecting to the auction house…" : "Opening the auction house…"}
+          </p>
+        </div>
       </main>
     );
   }
 
   const lot = stageLot(state);
   const lotIndex = lot ? state.lots.findIndex((l) => l.id === lot.id) + 1 : 0;
-  const banner = bannerFor(state, lot);
-  const leader = lot ? findPaddle(state, lot.status === "sold" ? lot.winnerPaddleId : lot.highPaddleId) : undefined;
+  const sold = lot?.status === "sold";
+  const leader = lot ? findPaddle(state, sold ? lot.winnerPaddleId : lot.highPaddleId) : undefined;
   const hasBid = !!lot && lot.highBid > 0;
-  const shownAmount = lot ? (lot.status === "sold" ? (lot.finalPrice ?? lot.highBid) : hasBid ? lot.highBid : lot.startPrice) : 0;
-  const ticker = state.events.filter((e) => e.type !== "stall").reverse().slice(0, 9);
+  const shownAmount = lot ? (sold ? (lot.finalPrice ?? lot.highBid) : hasBid ? lot.highBid : lot.startPrice) : 0;
+  const ticker = state.events.filter((e) => e.type !== "stall").reverse().slice(0, 8);
   const roster = [...state.paddles].sort((a, b) => a.number - b.number);
   const t = state.totals;
   const ledger = [
-    ["Held", t.held, "text-amber-800"],
-    ["Captured", t.captured, "text-emerald-800"],
-    ["Released", t.voided, "text-stone-700"],
-    ["Paid out", t.paidOut, "text-indigo-800"],
+    ["Held", t.held],
+    ["Captured", t.captured],
+    ["Released", t.voided],
+    ["Paid out", t.paidOut],
   ] as const;
+  const premium = state.settings?.premiumPct ?? 0;
 
   return (
-    <main className="grid min-h-screen grid-rows-[auto_minmax(0,1fr)_auto] gap-[1.1vw] p-[1.4vw] lg:h-screen lg:overflow-hidden">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-baseline gap-4">
-          <h1 className="font-serif text-[clamp(1.8rem,2.6vw,3.2rem)] font-black leading-none text-stone-900">Going Twice</h1>
-          <span className="text-[clamp(0.8rem,1.1vw,1.3rem)] font-semibold uppercase tracking-[0.25em] text-amber-800">
-            {typeConfig(state.auctionType).stageLabel}{lot && lotIndex > 0 ? ` · Lot ${lotIndex} of ${state.lots.length}` : ""}
+    <main className="theatre grid min-h-screen grid-rows-[auto_minmax(0,1fr)_auto] gap-[1.4vw] px-[2.2vw] py-[1.6vw] lg:h-screen lg:overflow-hidden">
+      {/* Masthead */}
+      <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--t-line)] pb-[1.1vw]">
+        <div className="flex flex-wrap items-baseline gap-x-[1.6vw] gap-y-2">
+          <Wordmark size="lg" tone="light" />
+          <span className={eyebrowDark}>
+            {typeConfig(state.auctionType).stageLabel}
+            {lot && lotIndex > 0 ? ` · Lot ${lotIndex} of ${state.lots.length}` : ""}
           </span>
-          {(state.settings?.premiumPct ?? 0) > 0 && (
-            <span className="rounded-full bg-amber-200 px-3 py-1 text-[clamp(0.75rem,1vw,1.2rem)] font-bold text-amber-950">
-              Plus {state.settings?.premiumPct}% buyer&apos;s premium
-            </span>
-          )}
+          {premium > 0 && <span className="text-[clamp(0.75rem,0.85vw,1.1rem)] text-clay-on-dark">Plus {premium}% buyer&apos;s premium</span>}
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          {error && <span role="status" className="rounded-full bg-rose-100 px-3 py-1 text-sm font-bold text-rose-900">Reconnecting&hellip;</span>}
-          <SandboxBadge className="!text-[clamp(0.7rem,0.95vw,1.1rem)]" />
+          {error && (
+            <span role="status" className="rounded-full border border-clay-on-dark/50 px-3 py-1 text-sm text-clay-on-dark">
+              Reconnecting&hellip;
+            </span>
+          )}
+          <SandboxBadge tone="dark" className="text-[clamp(0.7rem,0.8vw,1rem)]" />
           {speech.supported &&
             (speech.enabled ? (
               <button
                 type="button"
                 onClick={speech.toggleMute}
                 aria-pressed={speech.muted}
-                className="rounded-full border-2 border-stone-800 bg-white px-4 py-1.5 text-sm font-bold text-stone-900 hover:bg-stone-100"
+                className="rounded-md border border-[var(--t-line)] px-4 py-1.5 text-sm text-[var(--t-text)] transition-colors hover:border-[var(--t-muted)]"
               >
-                {speech.muted ? "Muted — tap to unmute" : "Sound on — mute"}
+                {speech.muted ? "Unmute Gus" : "Mute"}
               </button>
             ) : (
-              <button type="button" onClick={speech.start} className="rounded-full bg-amber-600 px-5 py-2 text-sm font-extrabold uppercase tracking-wide text-white shadow hover:bg-amber-700">
+              <button type="button" onClick={speech.start} className="rounded-md bg-canvas px-4 py-1.5 text-sm font-medium text-ink transition-colors hover:bg-white">
                 Start sound
               </button>
             ))}
         </div>
       </header>
 
-      <div className="grid min-h-0 grid-cols-1 gap-[1.1vw] lg:grid-cols-[1.9fr_1fr]">
-        {/* Lot card */}
-        <section aria-label="Current lot" className="flex min-h-0 flex-col overflow-hidden rounded-3xl border border-stone-300 bg-white p-[2vw] shadow-lg">
+      <div className="grid min-h-0 grid-cols-1 gap-[2vw] lg:grid-cols-[minmax(0,1.85fr)_minmax(0,1fr)]">
+        {/* The lot */}
+        <section aria-label="Current lot" className="flex min-h-0 flex-col">
           {lot ? (
             <>
-              <div className="flex items-center gap-[1.6vw]">
+              <div key={lot.id} className="anim-rise flex items-start gap-[1.8vw]">
                 {lot.image ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={lot.image} alt={lot.title} className="h-[min(11vw,20vh)] w-[min(11vw,20vh)] shrink-0 rounded-3xl bg-amber-50 object-cover ring-2 ring-amber-200" />
+                  <img
+                    src={lot.image}
+                    alt={lot.title}
+                    className="h-[min(16vw,30vh)] w-[min(16vw,30vh)] shrink-0 rounded-lg border border-[var(--t-line)] bg-[var(--t-panel)] object-cover"
+                  />
                 ) : (
-                  <div aria-hidden className="grid h-[min(7vw,13vh)] w-[min(7vw,13vh)] shrink-0 place-items-center rounded-3xl bg-amber-50 text-[min(4.6vw,8.5vh)] ring-2 ring-amber-200">
+                  <div
+                    aria-hidden
+                    className="grid h-[min(14vw,26vh)] w-[min(14vw,26vh)] shrink-0 place-items-center rounded-lg border border-[var(--t-line)] bg-[var(--t-panel)] text-[min(7vw,13vh)]"
+                  >
                     {lot.emoji}
                   </div>
                 )}
-                <div className="min-w-0">
-                  <p className="text-[clamp(0.8rem,1.1vw,1.3rem)] font-semibold uppercase tracking-[0.25em] text-amber-800">
-                    {lot.status === "open" ? "Now bidding" : lot.status === "pending" ? "Up next" : lot.status === "sold" ? "Just sold" : "Lot closed"}
-                  </p>
-                  <h2 className="font-serif text-[min(3.6vw,7vh)] font-black leading-[1.05] text-stone-900">{lot.title}</h2>
-                  <p className="mt-1 line-clamp-2 text-[min(1.5vw,2.8vh)] leading-snug text-stone-600">{lot.description}</p>
-                  {(lot.consignor || (lot.unit === "head" && (lot.quantity ?? 0) > 1)) && (
-                    <p className="mt-1 text-[min(1.3vw,2.4vh)] font-semibold text-stone-700">
-                      {lot.consignor ? `From ${lot.consignor}` : ""}
-                      {lot.consignor && lot.unit === "head" ? " · " : ""}
-                      {lot.unit === "head" && (lot.quantity ?? 0) > 1 ? `${lot.quantity} head, one bid for the lot` : ""}
-                    </p>
+                <div className="min-w-0 pt-[0.3vw]">
+                  <p className="eyebrow text-[clamp(0.7rem,0.8vw,1rem)] text-clay-on-dark">{statusLine(state, lot)}</p>
+                  <h2 className="display mt-[0.5vw] line-clamp-2 text-[min(5vw,9.5vh)] text-[var(--t-text)]">{lot.title}</h2>
+                  {lot.description && (
+                    <p className="mt-[0.6vw] line-clamp-2 max-w-[60ch] text-[min(1.25vw,2.4vh)] leading-snug text-[var(--t-muted)]">{lot.description}</p>
                   )}
-                  {!!lot.fmv && lot.sources?.length ? (
-                    <p className="mt-1 text-[min(1.3vw,2.4vh)] font-semibold text-amber-800">Est. value {money(lot.fmv)} · via Channel3</p>
-                  ) : null}
+                  <p className="mt-[0.6vw] flex flex-wrap gap-x-[1.2vw] text-[min(1.15vw,2.2vh)] text-[var(--t-muted)]">
+                    {!!lot.fmv && lot.sources?.length ? (
+                      <span>
+                        Est. value <span className="num text-[var(--t-text)]">{money(lot.fmv)}</span> · via Channel3
+                      </span>
+                    ) : null}
+                    {lot.consignor && <span>From {lot.consignor}</span>}
+                    {lot.unit === "head" && (lot.quantity ?? 0) > 1 && <span>{lot.quantity} head, one bid for the lot</span>}
+                  </p>
                 </div>
               </div>
 
-              <div className="mt-auto grid items-end gap-[1.4vw] pt-[1.4vw] md:grid-cols-[auto_1fr]">
-                <div>
-                  <p className="text-[clamp(0.8rem,1.1vw,1.3rem)] font-semibold uppercase tracking-[0.25em] text-stone-500">
-                    {lot.status === "sold" ? "Sold for" : hasBid ? "Current bid" : "Opening bid"}
-                  </p>
-                  <p key={shownAmount} className="anim-bump text-[min(10vw,19vh)] font-black leading-none tabular-nums text-stone-900">
-                    {money(shownAmount)}
-                  </p>
-                </div>
-                <div className="pb-[0.6vw]">
-                  <p className="text-[clamp(0.8rem,1.1vw,1.3rem)] font-semibold uppercase tracking-[0.25em] text-stone-500">
-                    {lot.status === "sold" ? "Winner" : "High bidder"}
-                  </p>
-                  {leader ? (
-                    <p className="text-[min(3.2vw,6vh)] font-extrabold leading-tight text-stone-900">
-                      <span className="mr-3 inline-block rounded-xl bg-stone-900 px-3 text-amber-300">#{leader.number}</span>
-                      {leader.name}
-                      {leader.kind === "agent" && <span className="ml-3 text-[0.5em] font-bold uppercase tracking-widest text-indigo-800">AI agent</span>}
-                    </p>
-                  ) : (
-                    <p className="text-[min(2.4vw,4.5vh)] font-semibold text-stone-500">
-                      {lot.status === "open" ? "Waiting for the first paddle" : "—"}
-                    </p>
-                  )}
-                  {lot.status === "open" && (
-                    <p className="mt-1 text-[min(1.5vw,2.8vh)] text-stone-600">
-                      Next bid {money(Math.max(lot.startPrice, lot.highBid + lot.increment))}
-                    </p>
-                  )}
-                </div>
-              </div>
+              <div className="mt-auto pt-[1.6vw]">
+                <PhaseTrack lot={lot} />
 
-              <div
-                key={banner.label}
-                role="status"
-                aria-live="polite"
-                className={`mt-[1.2vw] shrink-0 rounded-2xl px-6 py-[0.8vw] text-center text-[min(4.4vw,8.4vh)] font-black uppercase leading-none tracking-wide ${banner.cls} ${banner.anim}`}
-              >
-                {banner.label}
+                {sold ? (
+                  <div key={`sold-${lot.id}`} role="status" aria-live="polite" className="relative mt-[1.6vw] overflow-hidden rounded-xl border border-[#a9cdb3]/40 bg-[#a9cdb3]/[0.06] px-[2vw] py-[1.4vw]">
+                    <div className="glint pointer-events-none absolute inset-0" aria-hidden />
+                    <div className="flex flex-wrap items-end justify-between gap-[1.4vw]">
+                      <div>
+                        <p className="anim-sold display text-[min(8vw,15vh)] uppercase italic leading-none text-[#cfe3d4]">Sold</p>
+                        <p className="mt-[0.6vw] text-[min(1.7vw,3.2vh)] text-[var(--t-text)]">
+                          {leader ? (
+                            <>
+                              to Paddle <span className="num display text-[1.25em] text-clay-on-dark">{leader.number}</span> · {leader.name}
+                            </>
+                          ) : (
+                            "Hammer down"
+                          )}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className={eyebrowDark}>Hammer price</p>
+                        <p className="num display anim-bump text-[min(10vw,19vh)] leading-none text-[var(--t-text)]">{money(shownAmount)}</p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-[1.6vw] grid items-end gap-[2vw] md:grid-cols-[auto_minmax(0,1fr)]">
+                    <div>
+                      <p className={eyebrowDark}>{hasBid ? "Current bid" : lot.status === "open" ? "Opening bid" : "Starts at"}</p>
+                      <p key={shownAmount} aria-live="polite" className="num display anim-bump mt-[0.4vw] text-[min(13vw,25vh)] leading-[0.85] text-[var(--t-text)]">
+                        {money(shownAmount)}
+                      </p>
+                    </div>
+                    <div className="pb-[0.8vw]">
+                      <p className={eyebrowDark}>High bidder</p>
+                      {leader ? (
+                        <p key={leader.id} className="anim-rise mt-[0.4vw] text-[min(2.4vw,4.6vh)] leading-tight text-[var(--t-text)]">
+                          <span className="num display mr-[0.6vw] text-[1.35em] text-clay-on-dark">{leader.number}</span>
+                          {leader.name}
+                          {leader.kind === "agent" && <span className="ml-[0.6vw] text-[0.55em] text-[#b9c2e0]">AI agent</span>}
+                        </p>
+                      ) : (
+                        <p className="display mt-[0.4vw] text-[min(2.2vw,4.2vh)] italic text-[var(--t-muted)]">
+                          {lot.status === "open" ? "Awaiting the first paddle" : "—"}
+                        </p>
+                      )}
+                      {lot.status === "open" && (
+                        <p className="mt-[0.5vw] text-[min(1.25vw,2.4vh)] text-[var(--t-muted)]">
+                          Next bid <span className="num text-[var(--t-text)]">{money(Math.max(lot.startPrice, lot.highBid + lot.increment))}</span>
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </>
           ) : (
-            <p className="font-serif text-5xl text-stone-500">No lots yet.</p>
+            <div className="grid flex-1 place-items-center text-center">
+              <div>
+                <p className="display text-[min(4vw,7vh)] text-[var(--t-text)]">The room is being prepared.</p>
+                <p className="mt-3 text-[min(1.3vw,2.4vh)] text-[var(--t-muted)]">Lots will appear here as the organizer adds them.</p>
+              </div>
+            </div>
           )}
         </section>
 
-        {/* Right column */}
-        <aside className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-[1.1vw]">
-          <section aria-label="Join the auction" className="flex items-center gap-4 rounded-3xl border border-stone-300 bg-white p-4 shadow">
+        {/* Right rail */}
+        <aside className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-[1.2vw]">
+          <section aria-label="Join the auction" className="flex items-center gap-[1.2vw] rounded-xl border border-[var(--t-line)] bg-[var(--t-panel)] p-[1vw]">
             <QrCode value={joinUrl} label="QR code linking to the bidder paddle page" className="h-[min(8vw,15vh)] w-[min(8vw,15vh)] shrink-0" />
             <div className="min-w-0">
-              <p className="font-serif text-[clamp(1.1rem,1.6vw,2rem)] font-black leading-tight text-stone-900">Scan to get a paddle</p>
-              <p className="mt-1 break-all font-mono text-[clamp(0.7rem,0.95vw,1.2rem)] text-stone-600">{joinUrl}</p>
+              <p className="display text-[clamp(1.2rem,1.7vw,2.3rem)] leading-tight text-[var(--t-text)]">Raise a paddle</p>
+              <p className="mt-1 text-[clamp(0.75rem,0.85vw,1.1rem)] text-[var(--t-muted)]">Scan to bid. PayPal holds, never charges, until you win.</p>
+              <p className="mt-1 break-all font-mono text-[clamp(0.65rem,0.7vw,0.95rem)] text-[var(--t-muted)]/80">{joinUrl}</p>
             </div>
           </section>
 
-          <section aria-label="Bid ticker" className="flex min-h-0 flex-col overflow-hidden rounded-3xl border border-stone-300 bg-white p-4 shadow">
-            <h3 className="text-[clamp(0.75rem,1vw,1.2rem)] font-bold uppercase tracking-[0.25em] text-stone-500">Live ticker</h3>
+          <section aria-label="Bid ticker" className="flex min-h-0 flex-col overflow-hidden">
+            <h3 className={`${eyebrowDark} border-b border-[var(--t-line)] pb-[0.5vw]`}>The floor</h3>
             {ticker.length === 0 ? (
-              <p className="mt-3 text-lg text-stone-500">Nothing yet. The gavel is warming up.</p>
+              <p className="display mt-[0.8vw] text-[clamp(1rem,1.3vw,1.7rem)] italic text-[var(--t-muted)]">Quiet, for now.</p>
             ) : (
-              <ul className="mt-2 divide-y divide-stone-200 overflow-hidden">
-                {ticker.map((e) => (
-                  <li key={e.id} className="anim-slide-in flex items-baseline justify-between gap-3 py-[0.3vw]">
-                    <span className={`text-[clamp(0.85rem,1.2vw,1.5rem)] ${eventStyle[e.type]} ${isBidEvent(e) ? "font-bold" : ""}`}>{e.text}</span>
-                    <span className="shrink-0 font-mono text-[clamp(0.65rem,0.85vw,1rem)] text-stone-500">{clock(e.ts)}</span>
+              <ul className="min-h-0 overflow-hidden [mask-image:linear-gradient(to_bottom,black_70%,transparent)]">
+                {ticker.map((e, i) => (
+                  <li
+                    key={e.id}
+                    className="anim-rise flex items-baseline justify-between gap-3 border-b border-[var(--t-line)]/60 py-[0.45vw]"
+                    style={{ opacity: Math.max(0.35, 1 - i * 0.1) }}
+                  >
+                    <span className={`min-w-0 text-[clamp(0.8rem,0.95vw,1.3rem)] leading-snug ${eventTone[e.type]}`}>{e.text}</span>
+                    <span className="num shrink-0 text-[clamp(0.65rem,0.7vw,0.95rem)] text-[var(--t-muted)]">{clock(e.ts)}</span>
                   </li>
                 ))}
               </ul>
             )}
           </section>
 
-          <section aria-label="Paddle roster" className="rounded-3xl border border-stone-300 bg-white p-4 shadow">
-            <h3 className="text-[clamp(0.75rem,1vw,1.2rem)] font-bold uppercase tracking-[0.25em] text-stone-500">Paddles &amp; holds</h3>
+          <section aria-label="Paddle roster">
+            <h3 className={`${eyebrowDark} border-b border-[var(--t-line)] pb-[0.5vw]`}>Paddles &amp; headroom</h3>
             {roster.length === 0 ? (
-              <p className="mt-2 text-lg text-stone-500">No paddles yet. Scan the code to join.</p>
+              <p className="mt-[0.8vw] text-[clamp(0.85rem,1vw,1.3rem)] text-[var(--t-muted)]">No paddles yet. Scan the code to join.</p>
             ) : (
-              <ul className="mt-2 space-y-0.5 overflow-hidden">
-                {roster.slice(0, 5).map((p) => {
-                  const leading = lot?.status === "open" && lot.highPaddleId === p.id;
-                  return (
-                    <li key={p.id} className={`flex items-center justify-between gap-3 rounded-lg px-2 py-[0.15vw] ${leading ? "bg-amber-100" : ""}`}>
-                      <span className="truncate text-[clamp(0.8rem,1.05vw,1.3rem)] font-bold text-stone-900">
-                        <span className="mr-2 inline-block min-w-[2.4ch] rounded-md bg-stone-900 px-1.5 text-center text-amber-300">{p.number}</span>
-                        {p.name}
-                        {p.kind === "agent" ? " · AI" : ""}
-                      </span>
-                      <span className="shrink-0 text-right text-[clamp(0.75rem,0.95vw,1.2rem)] tabular-nums text-stone-700">
-                        {p.status === "pending" ? (
-                          <span className="font-semibold text-stone-500">awaiting hold</span>
-                        ) : p.status === "held" ? (
-                          <>
-                            <span className="font-bold">{money(p.holdAmount)}</span> hold &middot; <span className="font-bold text-emerald-800">{money(headroom(p))}</span> left
-                          </>
-                        ) : (
-                          <span className="font-semibold">{p.status === "captured" ? "charged" : "released"}</span>
-                        )}
-                      </span>
-                    </li>
-                  );
-                })}
-                {roster.length > 5 && <li className="px-2 text-sm font-semibold text-stone-500">+{roster.length - 5} more paddles</li>}
+              <ul className="mt-[0.4vw] space-y-[0.1vw]">
+                {roster.slice(0, 5).map((p) => (
+                  <RosterRow key={p.id} p={p} leading={lot?.status === "open" && lot.highPaddleId === p.id} />
+                ))}
+                {roster.length > 5 && <li className="px-[0.6vw] pt-[0.3vw] text-[clamp(0.75rem,0.85vw,1.1rem)] text-[var(--t-muted)]">+{roster.length - 5} more paddles</li>}
               </ul>
             )}
           </section>
         </aside>
       </div>
 
-      <div className="grid gap-[1.1vw] lg:grid-cols-[1.9fr_1fr]">
-        <section aria-label={`${PERSONA}, the auctioneer`} className="flex items-center gap-[1.4vw] rounded-3xl bg-stone-900 px-[2vw] py-[1.3vw] text-stone-100 shadow-lg">
+      {/* Gus + money */}
+      <div className="grid gap-[2vw] border-t border-[var(--t-line)] pt-[1.2vw] lg:grid-cols-[minmax(0,1.85fr)_minmax(0,1fr)]">
+        <section aria-label={`${PERSONA}, the auctioneer`} className="flex min-w-0 items-center gap-[1.4vw]">
           <div className="shrink-0 text-center">
-            <div aria-hidden className="grid h-[min(5.5vw,10vh)] w-[min(5.5vw,10vh)] place-items-center rounded-full bg-amber-500 text-[min(3vw,5.5vh)]">
-              {"\u{1F528}"}
+            <p className="display text-[clamp(1.1rem,1.4vw,1.9rem)] italic leading-none text-clay-on-dark">{PERSONA}</p>
+            <div aria-hidden className="mx-auto mt-[0.4vw] flex h-[1.2vw] min-h-3 w-8 items-end justify-center gap-[3px]">
+              {[0, 1, 2, 3].map((i) =>
+                speech.speaking ? (
+                  <span key={i} className="speak-bar h-full w-[3px] rounded bg-clay-on-dark" style={{ animationDelay: `${i * 0.12}s` }} />
+                ) : (
+                  <span key={i} className="h-[3px] w-[3px] rounded-full bg-[var(--t-line)]" />
+                ),
+              )}
             </div>
-            <p className="mt-1 text-sm font-extrabold uppercase tracking-widest text-amber-300">{PERSONA}</p>
           </div>
-          <p aria-live="polite" className="min-w-0 flex-1 font-serif text-[min(2.4vw,4.6vh)] italic leading-snug">
-            {state.caption.text ? <>&ldquo;{state.caption.text}&rdquo;</> : <span className="text-stone-400">{PERSONA} is clearing his throat&hellip;</span>}
-          </p>
-          <div aria-hidden className="flex h-8 w-10 shrink-0 items-end gap-1" title={speech.speaking ? "Speaking" : ""}>
-            {speech.speaking && [0, 1, 2, 3].map((i) => <span key={i} className="speak-bar h-full w-1.5 rounded bg-amber-400" style={{ animationDelay: `${i * 0.12}s` }} />)}
-          </div>
+          <div aria-hidden className="h-[min(4.5vw,8vh)] w-px shrink-0 bg-[var(--t-line)]" />
+          <blockquote aria-live="polite" className="min-w-0 flex-1">
+            <p key={state.caption.ts} className="anim-fade display line-clamp-2 text-[min(2.1vw,4vh)] italic leading-snug text-[var(--t-text)]">
+              {state.caption.text ? <>&ldquo;{state.caption.text}&rdquo;</> : <span className="text-[var(--t-muted)]">{PERSONA} is clearing his throat&hellip;</span>}
+            </p>
+          </blockquote>
         </section>
 
-        <section aria-label="Money ledger" className="grid grid-cols-4 gap-2 rounded-3xl border border-stone-300 bg-white px-4 py-3 shadow">
-          {ledger.map(([label, amount, color]) => (
-            <div key={label} className="min-w-0 text-center">
-              <p className="text-[clamp(0.6rem,0.8vw,1rem)] font-bold uppercase tracking-widest text-stone-500">{label}</p>
-              <p className={`text-[clamp(1rem,1.9vw,2.4rem)] font-black tabular-nums ${color}`}>{money(amount)}</p>
+        <section aria-label="Money ledger" className="grid grid-cols-4 divide-x divide-[var(--t-line)]">
+          {ledger.map(([label, amount]) => (
+            <div key={label} className="min-w-0 px-[0.8vw] first:pl-0">
+              <p className={eyebrowDark}>{label}</p>
+              <p className="num display mt-[0.3vw] truncate text-[clamp(1.2rem,2vw,2.8rem)] leading-none text-[var(--t-text)]">{money(amount)}</p>
             </div>
           ))}
         </section>

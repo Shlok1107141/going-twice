@@ -17,16 +17,16 @@ import type {
 } from "ag-studio";
 import { galaFormatShape } from "./format-shape";
 
-// --- palette (matches the app: cream / stone / amber) ------------------------------------------
+// --- palette (matches the Going Twice tokens in globals.css) ------------------------------------
 const C = {
-  ink: "#1c1917",
-  muted: "#78716c",
-  line: "#e7e0d2",
-  held: "#d97706",
-  captured: "#15803d",
-  released: "#a8a29e",
-  paid: "#92400e",
-  paper: "#fffdf8",
+  ink: "#141413",
+  muted: "#6b6a63",
+  line: "#e5e2d8",
+  held: "#c15f3c",
+  captured: "#3f6b4e",
+  released: "#8a8780",
+  paid: "#141413",
+  paper: "#ffffff",
 };
 
 const money = (n: number) =>
@@ -182,7 +182,7 @@ function MoneyFlow({ dataMapping, widgetApi }: AgWidgetParams<never>) {
   });
 
   return (
-    <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", fontFamily: "var(--font-geist-sans), system-ui, sans-serif" }}>
+    <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", fontFamily: "var(--font-ui), system-ui, sans-serif" }}>
       <div style={{ display: "flex", gap: 18, flexWrap: "wrap", padding: "2px 4px 0" }}>
         <Kpi label="Held" value={t.held} color={C.held} />
         <Kpi label="Captured" value={t.captured} color={C.captured} />
@@ -224,7 +224,7 @@ function Kpi({ label, value, color }: { label: string; value: number; color: str
     <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
       <span style={{ width: 8, height: 8, borderRadius: 2, background: color, display: "inline-block" }} />
       <span style={{ fontSize: 11.5, color: C.muted, letterSpacing: ".04em", textTransform: "uppercase" }}>{label}</span>
-      <span style={{ fontFamily: "var(--font-display), Georgia, serif", fontWeight: 700, fontSize: 18, color: C.ink }}>{money(value)}</span>
+      <span style={{ fontFamily: "var(--font-display), Georgia, serif", fontWeight: 600, fontSize: 20, color: C.ink, fontVariantNumeric: "lining-nums tabular-nums" }}>{money(value)}</span>
     </div>
   );
 }
@@ -237,7 +237,7 @@ function Node({ x, y, w, h, color, label, amount, side }: { x: number; y: number
     <g>
       <rect x={x} y={y} width={w} height={hh} rx={3} fill={color} />
       <text x={tx} y={y + hh / 2 - 2} textAnchor={anchor} fontSize="12.5" fontWeight="600" fill={C.ink} stroke="#fffdf8" strokeWidth="3" paintOrder="stroke">{label}</text>
-      <text x={tx} y={y + hh / 2 + 14} textAnchor={anchor} fontSize="15" fontWeight="700" fill={color} stroke="#fffdf8" strokeWidth="3" paintOrder="stroke" style={{ fontFamily: "var(--font-display), Georgia, serif" }}>{money(amount)}</text>
+      <text x={tx} y={y + hh / 2 + 14} textAnchor={anchor} fontSize="16" fontWeight="600" fill={color} stroke="#ffffff" strokeWidth="3" paintOrder="stroke" style={{ fontFamily: "var(--font-display), Georgia, serif", fontVariantNumeric: "lining-nums tabular-nums" }}>{money(amount)}</text>
     </g>
   );
 }
@@ -252,10 +252,10 @@ function Empty({ text }: { text: string }) {
 // Paddle board
 // ================================================================================================
 const CHIP: Record<string, { bg: string; fg: string; label: string }> = {
-  held: { bg: "#fef3c7", fg: "#92400e", label: "AUTH HELD" },
-  captured: { bg: "#dcfce7", fg: "#166534", label: "CAPTURED" },
-  voided: { bg: "#f5f5f4", fg: "#57534e", label: "RELEASED" },
-  pending: { bg: "#ffedd5", fg: "#9a3412", label: "PENDING" },
+  held: { bg: "#e8ebf4", fg: "#4b5a8c", label: "AUTH HELD" },
+  captured: { bg: "#e5eee7", fg: "#3f6b4e", label: "CAPTURED" },
+  voided: { bg: "#f2f0e8", fg: "#6b6a63", label: "RELEASED" },
+  pending: { bg: "#f6e7de", fg: "#a9512f", label: "PENDING" },
 };
 
 function PaddleBoard({ dataMapping, widgetApi }: AgWidgetParams<never>) {
@@ -281,7 +281,7 @@ function PaddleBoard({ dataMapping, widgetApi }: AgWidgetParams<never>) {
   if (rows && !list.length) return <Empty text="No paddles yet." />;
 
   return (
-    <div style={{ height: "100%", overflow: "auto", fontFamily: "var(--font-geist-sans), system-ui, sans-serif", padding: "2px 4px" }}>
+    <div style={{ height: "100%", overflow: "auto", fontFamily: "var(--font-ui), system-ui, sans-serif", padding: "2px 4px" }}>
       <div style={{ display: "flex", gap: 14, fontSize: 11, color: C.muted, margin: "0 0 8px", letterSpacing: ".04em", textTransform: "uppercase" }}>
         <Legend color="#e7e0d2" label="Hold" />
         <Legend color={C.held} label="Committed" />
@@ -327,10 +327,10 @@ function Legend({ color, label }: { color: string; label: string }) {
 const svgIcon = (inner: string) =>
   `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" fill="none">${inner}</svg>`;
 const FLOW_ICON = svgIcon(
-  `<rect x="2" y="5" width="5" height="22" rx="1.5" fill="#d97706"/><path d="M7 7C16 7 16 6 25 6V16C16 16 16 17 7 17Z" fill="#15803d" opacity=".6"/><path d="M7 19C16 19 16 21 25 21V26C16 26 16 25 7 25Z" fill="#a8a29e" opacity=".7"/><rect x="25" y="6" width="5" height="10" rx="1.5" fill="#15803d"/><rect x="25" y="21" width="5" height="5" rx="1.5" fill="#a8a29e"/>`,
+  `<rect x="2" y="5" width="5" height="22" rx="1.5" fill="#c15f3c"/><path d="M7 7C16 7 16 6 25 6V16C16 16 16 17 7 17Z" fill="#3f6b4e" opacity=".6"/><path d="M7 19C16 19 16 21 25 21V26C16 26 16 25 7 25Z" fill="#8a8780" opacity=".7"/><rect x="25" y="6" width="5" height="10" rx="1.5" fill="#3f6b4e"/><rect x="25" y="21" width="5" height="5" rx="1.5" fill="#8a8780"/>`,
 );
 const BOARD_ICON = svgIcon(
-  `<rect x="3" y="5" width="26" height="6" rx="3" fill="#e7e0d2"/><rect x="3" y="5" width="18" height="6" rx="3" fill="#d97706"/><rect x="3" y="14" width="26" height="6" rx="3" fill="#e7e0d2"/><rect x="3" y="14" width="22" height="6" rx="3" fill="#15803d"/><rect x="3" y="23" width="26" height="6" rx="3" fill="#e7e0d2"/><rect x="3" y="23" width="9" height="6" rx="3" fill="#a8a29e"/>`,
+  `<rect x="3" y="5" width="26" height="6" rx="3" fill="#e5e2d8"/><rect x="3" y="5" width="18" height="6" rx="3" fill="#c15f3c"/><rect x="3" y="14" width="26" height="6" rx="3" fill="#e5e2d8"/><rect x="3" y="14" width="22" height="6" rx="3" fill="#3f6b4e"/><rect x="3" y="23" width="26" height="6" rx="3" fill="#e5e2d8"/><rect x="3" y="23" width="9" height="6" rx="3" fill="#8a8780"/>`,
 );
 
 /** The widgets config for <AgStudio widgets={...}>. */
