@@ -37,11 +37,11 @@ function statusLine(state: State, lot: Lot | undefined): string {
 
 const eventTone: Record<AuctionEvent["type"], string> = {
   bid: "text-[var(--t-text)]",
-  "agent-bid": "text-[#b9c2e0]",
+  "agent-bid": "text-[var(--t-agent)]",
   stall: "text-[var(--t-muted)]",
   "going-once": "text-clay-on-dark",
   "going-twice": "text-clay-on-dark",
-  sold: "text-[#a9cdb3]",
+  sold: "text-[var(--t-sold)]",
   system: "text-[var(--t-muted)]",
 };
 
@@ -69,13 +69,13 @@ function PhaseTrack({ lot }: { lot: Lot | undefined }) {
               {(done || current) && (
                 <div
                   key={`${label}-${current}`}
-                  className={`anim-sweep absolute inset-0 rounded-full ${current ? (sold ? "bg-[#a9cdb3]" : "bg-clay") : "bg-[var(--t-text)]/70"}`}
+                  className={`anim-sweep absolute inset-0 rounded-full ${current ? (sold ? "bg-[var(--t-sold)]" : "bg-clay") : "bg-[var(--t-text)]/70"}`}
                 />
               )}
             </div>
             <p
               className={`mt-[0.6vw] text-[clamp(0.8rem,1vw,1.3rem)] transition-colors ${
-                current ? (sold ? "font-medium text-[#a9cdb3]" : "font-medium text-clay-on-dark") : done ? "text-[var(--t-text)]/80" : "text-[var(--t-muted)]/70"
+                current ? (sold ? "font-medium text-[var(--t-sold)]" : "font-medium text-clay-on-dark") : done ? "text-[var(--t-text)]/80" : "text-[var(--t-muted)]/70"
               } ${current && i === 1 ? "anim-breathe" : current && i === 2 ? "anim-breathe-fast" : ""}`}
             >
               {label}
@@ -94,7 +94,7 @@ function RosterRow({ p, leading }: { p: Paddle; leading: boolean }) {
       <span className="num display min-w-[2.2ch] text-center text-[clamp(1.1rem,1.5vw,2rem)] leading-none text-clay-on-dark">{p.number}</span>
       <span className="min-w-0 truncate text-[clamp(0.85rem,1vw,1.35rem)] text-[var(--t-text)]">
         {p.name}
-        {p.kind === "agent" && <span className="ml-2 text-[0.75em] text-[#b9c2e0]">AI</span>}
+        {p.kind === "agent" && <span className="ml-2 text-[0.75em] text-[var(--t-agent)]">AI</span>}
       </span>
       <span className="num text-right text-[clamp(0.75rem,0.9vw,1.2rem)] text-[var(--t-muted)]">
         {p.status === "pending" ? "awaiting hold" : p.status === "held" ? `${money(headroom(p))} left` : p.status === "captured" ? "charged" : "released"}
@@ -184,11 +184,11 @@ function Stage() {
   const settling = auto?.phase === "closing";
 
   return (
-    <main className="theatre grid min-h-screen grid-rows-[auto_minmax(0,1fr)_auto] gap-[1.4vw] px-[2.2vw] py-[1.6vw] lg:h-screen lg:overflow-hidden">
+    <main className="theatre grid min-h-screen grid-rows-[auto_minmax(0,1fr)_auto] gap-[1.4vw] px-[2.2vw] py-[1.6vw] lg:h-[calc(100dvh-var(--nav-h))] lg:overflow-hidden">
       {/* Masthead */}
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--t-line)] pb-[1.1vw]">
         <div className="flex flex-wrap items-baseline gap-x-[1.6vw] gap-y-2">
-          <Wordmark size="lg" tone="light" />
+          
           <span className={eyebrowDark}>
             {state.event?.name ?? typeConfig(state.auctionType).stageLabel}
             {lot && lotIndex > 0 ? ` · Lot ${lotIndex} of ${state.lots.length}` : ""}
@@ -213,15 +213,12 @@ function Stage() {
                 {speech.muted ? "Unmute Gus" : "Mute Gus"}
               </button>
             ) : (
-              <button type="button" onClick={speech.start} className="rounded-md bg-canvas px-4 py-1.5 text-sm font-medium text-ink transition-colors hover:bg-white">
+              <button type="button" onClick={speech.start} className="rounded-md bg-[var(--t-text)] px-4 py-1.5 text-sm font-medium text-[var(--t-bg)] transition-opacity hover:opacity-90">
                 Turn on Gus&apos;s voice
               </button>
             ))}
           <a href={`/paypal${roomQ}`} className="rounded-md border border-[var(--t-line)] px-4 py-1.5 text-sm text-[var(--t-text)] transition-colors hover:border-[var(--t-muted)]">
             PayPal page
-          </a>
-          <a href={`/${roomQ}`} className="rounded-md px-2 py-1.5 text-sm text-[var(--t-muted)] transition-colors hover:text-[var(--t-text)]">
-            Exit
           </a>
         </div>
         <p role="status" className="w-full text-[clamp(0.8rem,0.95vw,1.2rem)] text-[var(--t-muted)]">
@@ -273,11 +270,11 @@ function Stage() {
                 <PhaseTrack lot={lot} />
 
                 {sold ? (
-                  <div key={`sold-${lot.id}`} role="status" aria-live="polite" className="relative mt-[1.6vw] overflow-hidden rounded-xl border border-[#a9cdb3]/40 bg-[#a9cdb3]/[0.06] px-[2vw] py-[1.4vw]">
+                  <div key={`sold-${lot.id}`} role="status" aria-live="polite" className="relative mt-[1.6vw] overflow-hidden rounded-xl border border-[var(--t-sold)]/40 bg-[var(--t-sold)]/[0.06] px-[2vw] py-[1.4vw]">
                     <div className="glint pointer-events-none absolute inset-0" aria-hidden />
                     <div className="flex flex-wrap items-end justify-between gap-[1.4vw]">
                       <div>
-                        <p className="anim-sold display text-[max(3.6rem,min(8vw,15vh))] uppercase italic leading-none text-[#cfe3d4]">Sold</p>
+                        <p className="anim-sold display text-[max(3.6rem,min(8vw,15vh))] uppercase italic leading-none text-[var(--t-sold-hi)]">Sold</p>
                         <p className="mt-[0.6vw] text-[max(0.9rem,min(1.7vw,3.2vh))] text-[var(--t-text)]">
                           {leader ? (
                             <>
@@ -308,7 +305,7 @@ function Stage() {
                         <p key={leader.id} className="anim-rise mt-[0.4vw] text-[max(1.08rem,min(2.4vw,4.6vh))] leading-tight text-[var(--t-text)]">
                           <span className="num display mr-[0.6vw] text-[1.35em] text-clay-on-dark">{leader.number}</span>
                           {leader.name}
-                          {leader.kind === "agent" && <span className="ml-[0.6vw] text-[0.55em] text-[#b9c2e0]">AI agent</span>}
+                          {leader.kind === "agent" && <span className="ml-[0.6vw] text-[0.55em] text-[var(--t-agent)]">AI agent</span>}
                         </p>
                       ) : (
                         <p className="display mt-[0.4vw] text-[max(0.99rem,min(2.2vw,4.2vh))] italic text-[var(--t-muted)]">

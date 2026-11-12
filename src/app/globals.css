@@ -141,17 +141,50 @@ body {
   background: currentColor;
 }
 
-/* Stage (projector) runs in a dark theatre palette. */
+/* Dark theme: one switch in the top bar (saved per browser); set on <html data-theme>. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --canvas: #141413;
+  --surface: #1d1d1b;
+  --sunken: #262624;
+  --ink: #f3f1ea;
+  --ink-2: #d6d3c9;
+  --muted: #a7a59c;
+  --line: #33322e;
+  --line-strong: #4a4843;
+  --clay: #d9784f;
+  --clay-ink: #e0906b;
+  --clay-soft: #3a271e;
+  --clay-on-dark: #d9a083;
+  --sage: #8fc29f;
+  --sage-soft: #1f2d23;
+  --danger: #e58a7c;
+  --danger-soft: #3a1f1b;
+  --agent: #aab7e4;
+  --agent-soft: #232842;
+}
+
+/* Stage (projector): follows the theme. Light theme = light stage, dark theme = dark theatre. */
 .theatre {
-  --t-bg: #141413;
-  --t-panel: #1d1d1b;
-  --t-line: #33322e;
-  --t-text: #faf9f5;
-  --t-muted: #a7a59c;
+  --t-bg: var(--canvas);
+  --t-panel: var(--surface);
+  --t-line: var(--line);
+  --t-text: var(--ink);
+  --t-muted: var(--muted);
+  --t-agent: var(--agent);
+  --t-sold: var(--sage);
+  --t-sold-hi: var(--sage);
+  --clay-on-dark: var(--clay-ink);
   background:
     radial-gradient(1400px 700px at 30% -20%, rgb(193 95 60 / 0.10), transparent 60%),
     var(--t-bg);
   color: var(--t-text);
+}
+:root[data-theme="dark"] .theatre {
+  --t-agent: #b9c2e0;
+  --t-sold: #a9cdb3;
+  --t-sold-hi: #cfe3d4;
+  --clay-on-dark: #d9a083;
 }
 
 /* ---------- Motion (all disabled under prefers-reduced-motion) ---------- */

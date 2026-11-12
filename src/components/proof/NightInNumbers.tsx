@@ -78,7 +78,7 @@ export function NightInNumbersOverlay({ state, href }: { state: State; href?: st
         </button>
         <NightInNumbers state={state} tone="dark" compact />
         {href && (
-          <a href={href} className="mt-4 inline-flex items-center gap-2 rounded-md bg-canvas px-5 py-2.5 text-sm font-medium text-ink transition-colors hover:bg-white">
+          <a href={href} className="mt-4 inline-flex items-center gap-2 rounded-md bg-[var(--t-text)] px-5 py-2.5 text-sm font-medium text-[var(--t-bg)] transition-opacity hover:opacity-90">
             See every PayPal call for this auction <span aria-hidden>&rarr;</span>
           </a>
         )}

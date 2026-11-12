@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSyncExternalStore } from "react";
+import { ThemeToggle } from "./ThemeToggle";
 
 const noop = () => () => {};
 
@@ -45,7 +46,6 @@ export function Wordmark({ size = "md", tone = "ink" }: { size?: "md" | "lg"; to
 export function SiteNav() {
   const pathname = usePathname();
   const room = useRoom();
-  if (pathname === "/stage") return null;
 
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-canvas/90 backdrop-blur supports-[backdrop-filter]:bg-canvas/80">
@@ -64,7 +64,7 @@ export function SiteNav() {
           )}
         </div>
         <ul className="-mx-2 flex w-full items-center justify-between sm:mx-0 sm:w-auto sm:justify-end sm:gap-1">
-          {(room ? PAGES : []).map((p) => {
+          {PAGES.map((p) => {
             const active = pathname === p.href;
             return (
               <li key={p.href}>
@@ -80,6 +80,9 @@ export function SiteNav() {
               </li>
             );
           })}
+          <li>
+            <ThemeToggle />
+          </li>
         </ul>
       </nav>
     </header>
