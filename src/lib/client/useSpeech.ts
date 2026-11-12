@@ -14,10 +14,8 @@ const noop = () => () => {};
 const PREFETCH = [
   "Sound is on. Gus is ready.",
   "Going once... going twice... thumbs, people, thumbs...",
-  "It's very quiet in here. This is a gym. It has never once been this quiet.",
-  "I can wait. I've sat through a three-hour recorder concert. I can absolutely wait.",
-  "Somebody out there is doing math. Stop doing math. It's for the kids.",
-  "That's a wrap! Winners are charged exactly what they won, everyone else's hold is released, and the money is on its way to the PTA. Thank you!",
+  "I can wait. I've waited out longer silences than this. I can absolutely wait.",
+  "Somebody out there is doing math. Stop doing math. It's for a good cause.",
 ];
 const MAX_QUEUED = 2;
 

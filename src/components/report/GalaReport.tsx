@@ -1,7 +1,7 @@
 "use client";
 
 // The Gala Report: one AG Studio dashboard over the auction's state, with two custom widgets and a
-// Studio Agent Framework chat (Gemini) so the PTA chair can ask for charts in plain English.
+// Studio Agent Framework chat (Gemini) so the organizer can ask for charts in plain English.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgStudioAiModule, enableStudioDevValidations, type AgReportState, type AgStudioApi, type AgStudioMode } from "ag-studio";

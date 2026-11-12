@@ -19,11 +19,17 @@ const display = Cormorant_Garamond({
 
 export const metadata: Metadata = {
   title: "Going Twice",
-  description: "Live auctions where every paddle is a PayPal authorization hold. The gavel is the checkout.",
+  description:
+    "Going Twice turns any live auction into a one-tap checkout: every paddle is a PayPal authorization hold, an AI auctioneer runs the room, and the gavel settles everyone.",
+  applicationName: "Going Twice",
+  icons: { icon: [{ url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }, { url: "/icons/icon.svg", type: "image/svg+xml" }], apple: "/icons/apple-touch-icon.png" },
+  appleWebApp: { capable: true, title: "Going Twice", statusBarStyle: "default" },
 };
 
 export const viewport: Viewport = {
   themeColor: "#faf9f5",
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

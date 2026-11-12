@@ -50,7 +50,7 @@ export function SiteNav() {
     <header className="sticky top-0 z-40 border-b border-line bg-canvas/90 backdrop-blur supports-[backdrop-filter]:bg-canvas/80">
       <nav
         aria-label="Main"
-        className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-3 sm:h-[var(--nav-h)] sm:flex-nowrap sm:px-6 sm:py-0"
+        className="mx-auto flex w-full max-w-6xl 2xl:max-w-[88rem] flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-3 sm:h-[var(--nav-h)] sm:flex-nowrap sm:px-6 sm:py-0"
       >
         <div className="flex shrink-0 items-center gap-4">
           <Link href={withRoom("/", room)} className="rounded-sm" aria-label="Going Twice, home">

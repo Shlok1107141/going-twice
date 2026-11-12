@@ -3,7 +3,7 @@
 
 import type { AgDataSourcesDefinition, AgFieldDefinition, AgFormat } from "ag-studio";
 import type { State } from "@/lib/auction/types";
-import { defaultSettings } from "@/lib/auction/auctionTypes";
+import { defaultEvent, defaultSettings } from "@/lib/auction/auctionTypes";
 
 type FieldSpec = [id: string, name: string, format: AgFormat, hide?: boolean];
 const USD = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 2 });
@@ -16,7 +16,7 @@ const fields = (specs: FieldSpec[]): AgFieldDefinition[] =>
     ...(hide && { hide }),
   }));
 
-/** Ledger kinds, named as the money-flow stages the PTA chair thinks in. */
+/** Ledger kinds, named as the money-flow stages the organizer thinks in. */
 export const STAGE: Record<string, string> = {
   authorized: "Held",
   captured: "Captured",
@@ -90,7 +90,7 @@ export function buildGalaData(state: State): AgDataSourcesDefinition {
   return {
     description:
       "Going Twice gala report. Lots are charity auction items; every paddle is a PayPal authorization hold. " +
-      "Money flows Held -> Captured (winners, never more than the hold) -> Released (unused holds voided) -> Paid out (to the PTA treasurer). " +
+      "Money flows Held -> Captured (winners, never more than the hold) -> Released (unused holds voided) -> Paid out (to the beneficiary). " +
       "Amounts are USD. Above-estimate donation is final price minus the item's estimated fair market value.",
     sources: [
       {
@@ -232,5 +232,6 @@ export function sampleState(): State {
     receipts: [],
     auctionType: "charity",
     settings: defaultSettings("charity"),
+    event: defaultEvent("charity"),
   };
 }

@@ -1,6 +1,6 @@
 // Auction type config: pure data (no server imports) so the admin UI, store, engine and Gus share it.
 // Charity is the default hero; the others reuse the same hold-then-capture engine.
-import type { AuctionSettings, AuctionType } from "./types";
+import type { AuctionSettings, AuctionType, EventInfo } from "./types";
 
 export type SampleLot = {
   id: string;
@@ -51,25 +51,37 @@ export type AuctionTypeConfig = {
   lots: SampleLot[];
 };
 
+/** Default editable event details per auction type (placeholders; all editable in admin). */
+export const EVENT_DEFAULTS: Record<AuctionType, EventInfo> = {
+  charity: { name: "Spring Gala", organizer: "Maple Street Elementary PTA", beneficiary: "the school library fund", tagline: "An evening of giving", currency: "USD" },
+  estate: { name: "Hendricks Estate Sale", organizer: "Lakeside Auction House", beneficiary: "the Hendricks estate and its consignors", tagline: "Fine furniture, silver and curiosities", currency: "USD" },
+  collectibles: { name: "Riverside Art & Collectibles Auction", organizer: "Riverside Art & Collectibles Fair", beneficiary: "the house and its consignors", tagline: "Prints, records and ceramics", currency: "USD" },
+  farm: { name: "Dry Creek Farm & Livestock Sale", organizer: "Dry Creek Sale Barn", beneficiary: "the seller", tagline: "Livestock, equipment and feed", currency: "USD" },
+};
+
+export function defaultEvent(t: AuctionType): EventInfo {
+  return { ...EVENT_DEFAULTS[t] };
+}
+
 export const AUCTION_TYPES: Record<AuctionType, AuctionTypeConfig> = {
   charity: {
     type: "charity",
     label: "Charity gala",
     icon: "\u{1F3EB}",
     stageLabel: "Charity Auction",
-    blurb: "School or nonprofit fundraiser. Donation receipts with fair market value; proceeds go to the organizer.",
-    orgName: "Maple Street Elementary PTA (placeholder nonprofit)",
+    blurb: "Charity or nonprofit fundraiser. Donation receipts with fair market value; proceeds go to the organizer.",
+    orgName: "Maple Street Elementary PTA",
     invoicerName: "Maple Street Elementary PTA",
-    softDescriptor: "GOINGTWICE PTA",
+    softDescriptor: "GOINGTWICE GALA",
     receiptKind: "donation",
     payoutPlan: "organizer",
     payoutLabel: "100% to the organizer",
     defaults: { premiumPct: 0, commissionPct: 0, increment: 10 },
     editable: { premium: false, commission: false, consignors: false },
-    keyNumbers: ["No premium", "Donation receipts + FMV", "100% to PTA"],
+    keyNumbers: ["No premium", "Donation receipts + FMV", "100% to the cause"],
     gus: {
-      persona: "the warm, funny, slightly over-caffeinated volunteer auctioneer at an elementary school charity gala",
-      vocabulary: "school gala, PTA, library fund, bake sale, donated item",
+      persona: "the warm, funny, slightly over-caffeinated volunteer auctioneer at a charity gala",
+      vocabulary: "gala, fundraiser, donated item, silent table, raffle",
       lines: {},
     },
     lots: [

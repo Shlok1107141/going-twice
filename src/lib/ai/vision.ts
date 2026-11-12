@@ -15,10 +15,10 @@ export type Recognized = {
 };
 
 const PROMPT =
-  "You help a school PTA catalog items donated to a charity auction. Look at the photo and identify the single main item. " +
+  "You help an auction organizer catalog items for a live auction. Look at the photo and identify the single main item. " +
   'Reply with JSON only: {"title": short product name, "brand": string or null, "model": string or null, ' +
   '"category": one or two words, "condition": one of "new"|"like-new"|"good"|"fair" judged from the photo, ' +
-  '"description": warm school-auction tone, at most 40 words, no prices, ' +
+  '"description": warm, friendly auction tone, at most 40 words, no prices, ' +
   '"searchQuery": the best retail search query to find this exact product new (brand + model + product type)}.';
 
 const CONDITIONS: Condition[] = ["new", "like-new", "good", "fair"];

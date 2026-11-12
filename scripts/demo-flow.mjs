@@ -281,6 +281,35 @@ async function typeScenarios() {
   const ec2 = await call(E, "POST", "/api/close");
   check(ec2.ledger.length === ec.ledger.length, "estate: second close moves no money");
 
+  // ---- editable event + lot CRUD; receipts and Gus use the edited organizer
+  const V = R("V");
+  st = await call(V, "GET", "/api/state");
+  check(st.event?.organizer === "Maple Street Elementary PTA" && st.event.currency === "USD", "event: charity default template present");
+  let r = await call(V, "PATCH", "/api/event", { name: "Harvest Night <b>2026</b>", organizer: "Cedar Valley Rotary", beneficiary: "the food bank" });
+  check(r.event?.organizer === "Cedar Valley Rotary" && !/[<>]/.test(r.event.name), "event: PATCH edits fields and strips markup");
+  r = await call(V, "PATCH", "/api/event", { organizer: "" });
+  check(r.error && /organizer/.test(r.error), "event: empty organizer rejected");
+  r = await call(V, "PATCH", "/api/event", { name: "x".repeat(200) });
+  check(!!r.error, "event: over-long name rejected");
+  const nl = await call(V, "POST", "/api/lot");
+  check(nl.lot?.status === "pending" && nl.lot.title, "lot: blank lot created");
+  const lid = nl.lot.id;
+  r = await call(V, "PATCH", `/api/lot/${lid}`, { title: "Pie of the Year", description: "<script>x</script>Apple", emoji: "P", startPrice: 20, increment: 5, fmv: 30 });
+  check(r.lot?.title === "Pie of the Year" && r.lot.startPrice === 20 && !/[<>]/.test(r.lot.description), "lot: PATCH edits and sanitizes");
+  r = await call(V, "PATCH", `/api/lot/${lid}`, { startPrice: -5 });
+  check(!!r.error, "lot: negative price rejected");
+  const vp = await tp(V, "Vera", 500);
+  await start(V, lid);
+  check((await call(V, "PATCH", `/api/lot/${lid}`, { title: "Nope" })).error !== undefined, "lot: cannot edit once started");
+  check((await call(V, "DELETE", `/api/lot/${lid}`)).error !== undefined, "lot: cannot delete once started");
+  check((await b(V, vp, lid, 20)).ok === true, "lot: bid on the new lot");
+  await hammer(V, lid);
+  const dl = await call(V, "POST", "/api/lot");
+  check((await call(V, "DELETE", `/api/lot/${dl.lot.id}`)).ok === true && !(await call(V, "GET", "/api/state")).lots.some((l) => l.id === dl.lot.id), "lot: pending lot deleted");
+  const vc = await call(V, "POST", "/api/close");
+  check(vc.receipts.length === 1 && /Cedar Valley Rotary/.test(vc.receipts[0].text) && !/Maple Street/.test(vc.receipts[0].text), "receipt uses the edited organizer");
+  check(/the food bank/.test(vc.caption.text) && /Harvest Night/.test(vc.caption.text), "gus: closing line names the edited event and beneficiary");
+
   // ---- farm: larger increments, per-head units
   st = await call(R("F"), "POST", "/api/auction/type", { type: "farm" });
   check(st.auctionType === "farm" && st.lots.every((l) => l.increment >= 50) && st.lots.some((l) => l.unit === "head"), "farm: larger increments, per-head lots");

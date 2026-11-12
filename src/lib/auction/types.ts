@@ -11,6 +11,16 @@ export type AuctionSettings = {
   commissionPct: number;
 };
 
+/** Editable event details (who is running this auction and who receives the proceeds). */
+export type EventInfo = {
+  name: string;
+  organizer: string;
+  /** Who receives the proceeds. */
+  beneficiary: string;
+  tagline?: string;
+  currency: "USD";
+};
+
 export type PaddleStatus = "pending" | "held" | "captured" | "voided";
 
 export type Paddle = {
@@ -93,6 +103,8 @@ export type State = {
   /** extra: kind of auction (default "charity"). */
   auctionType: AuctionType;
   settings: AuctionSettings;
+  /** extra: editable event details (defaults per auction type). */
+  event: EventInfo;
   demoMode: boolean;
   /** extra: live PayPal against the sandbox, so `testCard:true` paddles are allowed. */
   testCards?: boolean;

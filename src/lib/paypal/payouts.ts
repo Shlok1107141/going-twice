@@ -1,4 +1,4 @@
-// Payouts v1: send auction proceeds to the PTA treasurer (email, phone, or Venmo handle).
+// Payouts v1: send auction proceeds to the organizer (email, phone, or Venmo handle).
 import { paypalRequest, toAmount, type Link } from "./client";
 
 export type PayoutRecipientType = "EMAIL" | "PHONE" | "USER_HANDLE" | "PAYPAL_ID";

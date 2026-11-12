@@ -95,7 +95,7 @@ async function askModel(run: Run, a: Agent, lot: Lot, amount: number, highName: 
   run.status.aiCalls++;
   const reply = await callClaude({
     system:
-      `You are ${a.spec.voice} You are a bidder at a school charity auction. Reply ONLY with JSON ` +
+      `You are ${a.spec.voice} You are a bidder at a live auction. Reply ONLY with JSON ` +
       '{"bid":boolean,"reason":string}. bid = whether you raise the bid right now (lean yes when the lot suits you and the price is within your limit; ' +
       "the system picks the amount and enforces your limit). reason = one line in character, first person, under 18 words, no emojis.",
     user:

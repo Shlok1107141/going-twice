@@ -64,8 +64,8 @@ export function AutopilotPanel() {
     <section aria-labelledby="auto-h" className="overflow-hidden rounded-xl bg-ink p-8 text-canvas shadow-lift">
       <div className="flex flex-wrap items-start justify-between gap-6">
         <div className="max-w-xl">
-          <p className="eyebrow text-clay-on-dark">Agentic gala</p>
-          <h2 id="auto-h" className="display mt-2 text-3xl sm:text-4xl">Run a full gala on autopilot</h2>
+          <p className="eyebrow text-clay-on-dark">Agentic auction</p>
+          <h2 id="auto-h" className="display mt-2 text-3xl sm:text-4xl">Run a full auction on autopilot</h2>
           <p className="mt-3 text-[15px] leading-relaxed text-canvas/75">
             Three AI bidders, each with a real PayPal hold, bid against each other and against you. Join from /paddle to jump in; Gus calls every lot, and the holds settle at the end.
           </p>

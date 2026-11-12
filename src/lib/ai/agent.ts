@@ -53,7 +53,7 @@ export async function decideAgentBid(p: Paddle, lot: Lot): Promise<AgentDecision
   if (claudeEnabled()) {
     const reply = await callClaude({
       system:
-        "You decide for an absentee bidder at a school charity auction. Given the bidder's instruction and one lot, " +
+        "You decide for an absentee bidder at a live auction. Given the bidder's instruction and one lot, " +
         'reply ONLY with JSON {"match":boolean,"bid":boolean,"reasoning":string}. match = the instruction wants this lot. ' +
         "bid = match and bidding the stated amount now fits the instruction. reasoning: one friendly sentence, under 25 words.",
       user:

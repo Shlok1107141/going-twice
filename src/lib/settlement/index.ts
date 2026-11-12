@@ -178,7 +178,7 @@ function applyResult(plan: SettlementPlan, r: SettlementResult, runId: string): 
       return s;
     }
     i.payoutDone = true;
-    pushEvent({ type: "system", text: `Sent ${money(amount)} to the PTA treasurer.` });
+    pushEvent({ type: "system", text: `Sent ${money(amount)} to the beneficiary.` });
   } else {
     i.payoutDone = true;
   }

@@ -2,8 +2,10 @@
 // code and given to Claude; Claude only phrases them. Fallback is a fixed template.
 import { callClaude } from "./claude";
 import { money } from "./auctioneer";
+import { getState } from "@/lib/auction/store";
 
-export const SCHOOL_NAME = "Maple Street Elementary PTA (placeholder nonprofit)";
+const organizerName = () => getState().event.organizer;
+const beneficiaryName = () => getState().event.beneficiary;
 
 export type ReceiptItem = { title: string; paid: number; fmv: number; listings?: number };
 
@@ -20,7 +22,7 @@ function lineFor(i: ReceiptItem): string {
 export function templateReceipt(name: string, items: ReceiptItem[]): string {
   const total = items.reduce((s, i) => s + i.paid, 0);
   return [
-    `Thank you, ${name}! Donation receipt from ${SCHOOL_NAME}.`,
+    `Thank you, ${name}! Donation receipt from ${organizerName()}.`,
     ...items.map(lineFor),
     `Total paid: ${money(Math.round(total * 100) / 100)}.`,
     DISCLAIMER,
@@ -32,9 +34,10 @@ export async function writeReceipt(name: string, items: ReceiptItem[], sales?: S
   const facts = items.map(lineFor).join("\n");
   const reply = await callClaude({
     system:
-      "You write short, warm donation receipts for a school charity auction. Use EXACTLY the numbers given; never invent or change amounts. " +
+      "You write short, warm donation receipts for a charity auction. Use EXACTLY the numbers given; never invent or change amounts. " +
       "Plain text, at most 90 words, no markdown.",
-    user: `Donor: ${name}\nOrganization: ${SCHOOL_NAME}\nFacts:\n${facts}\nWrite a thank-you receipt that lists each item, amount paid, and estimated fair market value of goods and services received.`,
+    user: `Donor: ${name}\nOrganization: ${organizerName()}
+Proceeds go to: ${beneficiaryName()}\nFacts:\n${facts}\nWrite a thank-you receipt that lists each item, amount paid, and estimated fair market value of goods and services received.`,
     maxTokens: 220,
     timeoutMs: 4000,
   });
