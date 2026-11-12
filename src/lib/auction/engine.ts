@@ -14,6 +14,7 @@ import {
   recomputeTotals,
   resetStore,
   save,
+  sandboxBuyerEmails,
   setCaption,
   testCardsAllowed,
   type AuctionSettings,
@@ -180,9 +181,7 @@ function lotCtx(lot: Lot) {
 // email (env SANDBOX_BUYER_1..3 = "email:password"; only the email part is ever used).
 const sb = globalThis as unknown as { __gtBuyerRR?: number };
 function nextSandboxBuyerEmail(): string | undefined {
-  const emails = [1, 2, 3]
-    .map((n) => process.env[`SANDBOX_BUYER_${n}`]?.split(":")[0]?.trim())
-    .filter((e): e is string => !!e && e.includes("@"));
+  const emails = sandboxBuyerEmails();
   if (!emails.length) return undefined;
   sb.__gtBuyerRR = (sb.__gtBuyerRR ?? -1) + 1;
   return emails[sb.__gtBuyerRR % emails.length];

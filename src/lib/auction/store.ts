@@ -38,11 +38,15 @@ function persistEnabled(): boolean {
   return process.env.PERSIST !== "0";
 }
 
-/** Sandbox buyer emails (env SANDBOX_BUYER_1..3 = "email:password"); only the email part is ever read. */
+/**
+ * Sandbox buyer emails used for test-card receipts and as default estate consignors. Production sets the
+ * password-free list SANDBOX_BUYER_EMAILS="a@x,b@x,c@x"; locally SANDBOX_BUYER_1..3 = "email:password" also
+ * work (only the email part is ever read).
+ */
 export function sandboxBuyerEmails(): string[] {
-  return [1, 2, 3]
-    .map((n) => process.env[`SANDBOX_BUYER_${n}`]?.split(":")[0]?.trim())
-    .filter((e): e is string => !!e && e.includes("@"));
+  const fromList = (process.env.SANDBOX_BUYER_EMAILS ?? "").split(",");
+  const fromPairs = [1, 2, 3].map((n) => process.env[`SANDBOX_BUYER_${n}`]?.split(":")[0]);
+  return [...new Set([...fromList, ...fromPairs].map((e) => e?.trim()).filter((e): e is string => !!e && e.includes("@")))];
 }
 
 function seedLots(type: AuctionType): Lot[] {
