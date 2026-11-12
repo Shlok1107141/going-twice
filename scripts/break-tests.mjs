@@ -408,7 +408,13 @@ def("payout-insufficient-funds", "payout fails with INSUFFICIENT_FUNDS mid-close
   assert(s.payoutStatus?.state === "retry" && s.totals.paidOut === 0, `payoutStatus ${JSON.stringify(s.payoutStatus)} paidOut ${s.totals.paidOut}`);
   const again = await post("/api/close", undefined, room);
   assert(again.json.ledger.length === s.ledger.length, "re-close moved money");
-  const r1 = await post("/api/payout/retry", undefined, room); // hook still has 1 failure left
+  // Admin UI contract: GET probe says pending; POST carries the newest pending payout row's ledgerId.
+  const probe = await get("/api/payout/retry", room);
+  assert(probe.status === 200 && probe.json.available === true && probe.json.pending === true, `probe ${probe.status} ${probe.text.slice(0, 120)}`);
+  const badId = await post("/api/payout/retry", { ledgerId: "led-nope" }, room);
+  assert(badId.status === 400, `bogus ledgerId -> ${badId.status}`);
+  const r1 = await post("/api/payout/retry", { ledgerId: pending[0].id }, room); // hook still has 1 failure left
+  assert(typeof r1.json.error === "string", "failed retry has no error message for the UI");
   assert(r1.status === 502 && r1.json.ok === false && r1.json.payoutStatus.attempts === 2, `first retry ${r1.status} ${JSON.stringify(r1.json.payoutStatus)}`);
   const [r2, r3] = await Promise.all([post("/api/payout/retry", undefined, room), post("/api/payout/retry", undefined, room)]);
   const r4 = await post("/api/payout/retry", undefined, room);
@@ -417,6 +423,8 @@ def("payout-insufficient-funds", "payout fails with INSUFFICIENT_FUNDS mid-close
   assert(r2.json.ok && r3.json.ok && r4.json.ok && r4.json.retried === false, `retries ${[r2, r3, r4].map((r) => JSON.stringify({ s: r.status, ok: r.json.ok, re: r.json.retried }))}`);
   assert(ok.length === 1 && s.totals.paidOut === s.totals.captured && s.payoutStatus.state === "sent", `payout rows ${ok.length}, paidOut ${s.totals.paidOut} vs ${s.totals.captured}`);
   assert(s.ledger.filter((r) => r.status === "PENDING_RETRY").length === 0, "pending row left behind");
+  const probe2 = (await get("/api/payout/retry", room)).json;
+  assert(probe2.pending === false, "probe still pending after payout");
   return `closed with pending payout $${s.payoutStatus.amount}; retry #1 failed again (502), concurrent retries paid once (${ok[0].paypalId}), later retry no-op`;
 }, "hooks");
 
