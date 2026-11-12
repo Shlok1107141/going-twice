@@ -19,21 +19,28 @@ function takeGeminiSlot(): boolean {
   return true;
 }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** Models that answered 404 for this deployment's key(s); skipped for the life of the process. */
+const deadModels: Set<string> = ((globalThis as unknown as { __gtDeadModels?: Set<string> }).__gtDeadModels ??= new Set());
 
 async function callGemini(
   key: string,
   args: { system: string; user: string; maxTokens?: number; timeoutMs?: number; fast?: boolean },
 ): Promise<string | null> {
-  const model = args.fast
-    ? process.env.GEMINI_FAST_MODEL || "gemini-2.5-flash-lite"
-    : process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  // Free-tier availability differs per key and model, and quotas are per model: walk a chain and move on
+  // immediately on 404 (model not available to this key, remembered) or 429 (quota spent).
+  const chain = [
+    ...(args.fast ? [process.env.GEMINI_FAST_MODEL] : [process.env.GEMINI_MODEL]),
+    ...(args.fast
+      ? ["gemini-3.1-flash-lite", "gemini-3.5-flash", "gemini-2.5-flash"]
+      : ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-3.1-flash-lite"]),
+  ].filter((m, i, a): m is string => !!m && a.indexOf(m) === i && !deadModels.has(m));
   if (!takeGeminiSlot()) {
     console.warn("[gemini] local rate limit reached; using fallback");
     return null;
   }
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), Math.max(args.timeoutMs ?? 4000, 6000));
+  let model = chain[0] ?? "gemini-2.5-flash";
   try {
     const send = () =>
       geminiFetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
@@ -51,11 +58,12 @@ async function callGemini(
         cache: "no-store",
       });
     let res = await send();
-    if (res.status === 429) {
-      console.warn("[gemini] 429, retrying once");
-      await sleep(1200);
-      if (takeGeminiSlot()) res = await send();
+    for (let k = 1; (res.status === 404 || res.status === 429) && k < chain.length; k++) {
+      if (res.status === 404) deadModels.add(model);
+      model = chain[k];
+      res = await send();
     }
+    if (res.status === 404) deadModels.add(model);
     if (!res.ok) {
       console.error("[gemini] HTTP", res.status);
       return null;
