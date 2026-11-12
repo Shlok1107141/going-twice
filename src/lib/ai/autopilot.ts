@@ -74,7 +74,7 @@ type Run = { status: AutopilotStatus; stop: boolean; agents: Agent[]; auctionId:
 export const MAX_LOTS = 3;
 export const MAX_MS = 8 * 60 * 1000;
 /** A demo lot should not run forever: after this many persona bids on a lot the personas stand down (they still answer a human). */
-const MAX_PERSONA_BIDS = 5;
+const MAX_PERSONA_BIDS = 4;
 /** Demo galas that may run at once in this process (each has its own room and its own PayPal holds). */
 const MAX_RUNS = 4;
 const AI_BUDGET = Number(process.env.AUTOPILOT_AI_BUDGET) > 0 ? Number(process.env.AUTOPILOT_AI_BUDGET) : 12;
@@ -177,6 +177,10 @@ async function consider(run: Run, a: Agent, lotId: string): Promise<void> {
     // Keep the demo moving: once the personas have traded enough bids they let the lot go, unless a human is leading.
     const leader = s.paddles.find((x) => x.id === lot.highPaddleId);
     if (run.lotBids >= MAX_PERSONA_BIDS && leader?.agent?.lotId === "__autopilot__") return;
+    // Leave room for people: when a human (or their absentee agent) is winning, the AI bidders mostly hold back,
+    // and after two AI bids on a lot they stop outbidding a human altogether.
+    const humanLeads = !!leader && leader.agent?.lotId !== "__autopilot__";
+    if (humanLeads && (run.lotBids >= 2 || Math.random() < 0.65)) return;
 
     const high = s.paddles.find((x) => x.id === lot.highPaddleId);
     let d = await askModel(run, a, lot, next, high?.name);
