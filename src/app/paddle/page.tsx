@@ -3,6 +3,8 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { PayPalButtons } from "@/components/PayPalButtons";
 import { InstallHint } from "@/components/InstallHint";
+import { JoinRoom } from "@/components/JoinRoom";
+import { useRoom } from "@/components/SiteNav";
 import { SandboxBadge } from "@/components/SandboxBadge";
 import { btn, Eyebrow, field, fieldLabel } from "@/components/ui";
 import { post } from "@/lib/client/api";
@@ -461,6 +463,22 @@ function Skeleton({ label }: { label: string }) {
 }
 
 export default function PaddlePage() {
+  const room = useRoom();
+  if (!room) {
+    return (
+      <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-6 px-4 pb-16 pt-10">
+        <section className={`${card} space-y-4`}>
+          <h1 className="display text-3xl text-ink">Join an auction</h1>
+          <p className="leading-relaxed text-ink-2">Enter the room code from the host, or scan the code on the auction screen.</p>
+          <JoinRoom compact />
+        </section>
+      </main>
+    );
+  }
+  return <PaddleRoom room={room} />;
+}
+
+function PaddleRoom({ room }: { room: string }) {
   const { state, error, refresh } = useAuctionState(800);
   const stored = useStoredValue("gt.paddleId");
   const [pendingOrder, setPendingOrder] = useState<string | undefined>();
@@ -515,7 +533,7 @@ export default function PaddlePage() {
         <p className="min-w-0 truncate text-sm text-ink-2">
           {state?.event ? (
             <>
-              <span className="font-medium text-ink">{state.event.name}</span> &middot; {state.event.organizer}
+              <span className="font-medium text-ink">{state.event.name}</span> &middot; room <span className="font-mono">{room.toUpperCase()}</span>
             </>
           ) : null}
         </p>

@@ -48,7 +48,25 @@ export type AutopilotStatus = {
   currentLotId?: string;
   aiCalls: number;
   personas: { name: string; emoji: string; blurb: string; paddleId?: string; number?: number; cap: number; hold: number }[];
+  /** Newest first: every decision an AI bidder made, and who made it (the model, or a rule in code). */
+  decisions: Decision[];
 };
+
+export type Decision = {
+  ts: number;
+  name: string;
+  lot: string;
+  action: "bid" | "pass" | "out";
+  amount?: number;
+  reason: string;
+  /** "gemini": the model chose yes/no and wrote the line. "rule": code decided (limit, hold, or no model). */
+  by: "gemini" | "rule";
+};
+
+function logDecision(run: Run, d: Omit<Decision, "ts">): void {
+  run.status.decisions.unshift({ ts: Date.now(), ...d });
+  if (run.status.decisions.length > 40) run.status.decisions.length = 40;
+}
 
 type Agent = { spec: PersonaSpec; paddleId: string; busy: boolean; key: string; actAt: number; dropped: boolean };
 type Run = { status: AutopilotStatus; stop: boolean; agents: Agent[]; auctionId: string; lotBids: number };
@@ -69,7 +87,7 @@ const r2 = (n: number) => Math.round(n * 100) / 100;
 const scaled = (ms: number) => Math.max(60, ms / tickSpeed());
 
 function idleStatus(roomKey: string): AutopilotStatus {
-  return { phase: "idle", running: false, roomKey, message: "Autopilot is off.", autoClose: false, lotIds: [], lotIndex: 0, aiCalls: 0, personas: [] };
+  return { phase: "idle", running: false, roomKey, message: "Autopilot is off.", autoClose: false, lotIds: [], lotIndex: 0, aiCalls: 0, personas: [], decisions: [] };
 }
 
 export function autopilotStatus(roomKey = "main"): AutopilotStatus {
@@ -87,10 +105,10 @@ export function stopAutopilot(roomKey = "main"): AutopilotStatus {
 
 // ---------------------------------------------------------------- decisions
 
-type Decision = { bid: boolean; reason: string };
+type ModelDecision = { bid: boolean; reason: string };
 
 /** Model guard: spacing between calls, a per-gala budget, and a short breaker after failures. */
-async function askModel(run: Run, a: Agent, lot: Lot, amount: number, highName: string | undefined): Promise<Decision | null> {
+async function askModel(run: Run, a: Agent, lot: Lot, amount: number, highName: string | undefined): Promise<ModelDecision | null> {
   const ai = (g.__gtApAi ??= { last: 0, fails: 0, pauseUntil: 0 });
   if (!claudeEnabled() || run.status.aiCalls >= AI_BUDGET || Date.now() < ai.pauseUntil) return null;
   const wait = ai.last + 1200 - Date.now();
@@ -107,6 +125,7 @@ async function askModel(run: Run, a: Agent, lot: Lot, amount: number, highName: 
       `Your next bid would be ${money(amount)}; your limit is ${money(a.spec.cap)}.`,
     maxTokens: 100,
     timeoutMs: 6000,
+    fast: true, // a yes/no and one line: the small model is plenty, and its free quota lasts longest
   });
   const j = extractJson<{ bid?: unknown; reason?: unknown }>(reply);
   if (!j || typeof j.bid !== "boolean") {
@@ -141,6 +160,14 @@ async function consider(run: Run, a: Agent, lotId: string): Promise<void> {
       if (!a.dropped) {
         a.dropped = true;
         pushEvent({ type: "system", text: `${a.spec.name} drops out of ${lot.title} at ${money(lot.highBid || lot.startPrice)}${next > headroom ? " (hold reached)" : ""}.`, paddleId: p.id, lotId });
+        logDecision(run, {
+          name: a.spec.name,
+          lot: lot.title,
+          action: "out",
+          amount: next,
+          reason: next > headroom ? `The next bid, ${money(next)}, is more than my PayPal hold has left (${money(headroom)}).` : `The next bid, ${money(next)}, is over my limit of ${money(a.spec.cap)}.`,
+          by: "rule",
+        });
       }
       return;
     }
@@ -153,9 +180,13 @@ async function consider(run: Run, a: Agent, lotId: string): Promise<void> {
 
     const high = s.paddles.find((x) => x.id === lot.highPaddleId);
     let d = await askModel(run, a, lot, next, high?.name);
+    const by: Decision["by"] = d ? "gemini" : "rule";
     if (!d) d = { bid: true, reason: fallbackReason(a, lot, next) }; // model unavailable: persona heuristic
     if (!d.reason) d.reason = fallbackReason(a, lot, next);
-    if (!d.bid) return; // may reconsider on the next look
+    if (!d.bid) {
+      logDecision(run, { name: a.spec.name, lot: lot.title, action: "pass", amount: next, reason: d.reason, by });
+      return; // may reconsider on the next look
+    }
 
     // Re-read the lot after the (slow) model call and compute the amount in code.
     const lot2 = getState().lots.find((l) => l.id === lotId);
@@ -164,8 +195,12 @@ async function consider(run: Run, a: Agent, lotId: string): Promise<void> {
     if (a.spec.style === "collector") amount = r2(amount + lot2.increment * Math.floor(rand(2, 5))); // the jump
     amount = r2(Math.min(amount, a.spec.cap, r2(p.holdAmount - p.committed)));
     if (amount < nextBidFor(lot2)) return;
+    if (by === "rule") d.reason = fallbackReason(a, lot2, amount); // quote the amount actually bid
     if (p.agent) p.agent.lastReasoning = d.reason;
-    if (placeBid(p.id, lotId, amount, "agent").ok) run.lotBids++;
+    if (placeBid(p.id, lotId, amount, "agent").ok) {
+      run.lotBids++;
+      logDecision(run, { name: a.spec.name, lot: lot2.title, action: "bid", amount, reason: d.reason, by });
+    }
   } catch (e) {
     console.error("[autopilot]", (e as Error).message);
   } finally {
@@ -283,7 +318,7 @@ export async function startAutopilot(opts: { personas?: PersonaSpec[]; lots?: st
 
   const status: AutopilotStatus = {
     phase: "setup", running: true, roomKey, message: "Giving each bidder a PayPal hold…", autoClose: opts.autoClose === true,
-    startedAt: Date.now(), deadlineAt: Date.now() + MAX_MS, lotIds, lotIndex: 0, aiCalls: 0,
+    startedAt: Date.now(), deadlineAt: Date.now() + MAX_MS, lotIds, lotIndex: 0, aiCalls: 0, decisions: [],
     personas: specs.map((p) => ({ name: p.name, emoji: p.emoji, blurb: p.blurb, cap: p.cap, hold: p.hold ?? Math.round(p.cap * 1.5) })),
   };
   const run: Run = { status, stop: false, agents: [], auctionId: getInternal().auctionId, lotBids: 0 };

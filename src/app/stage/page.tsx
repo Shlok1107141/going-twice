@@ -5,14 +5,14 @@ import { NightInNumbersOverlay } from "@/components/proof/NightInNumbers";
 import { QrCode } from "@/components/QrCode";
 import { SandboxBadge } from "@/components/SandboxBadge";
 import { Wordmark } from "@/components/SiteNav";
-import { FORMS } from "@/lib/ai/gusLines";
 import { typeConfig } from "@/lib/auction/auctionTypes";
 import { post } from "@/lib/client/api";
 import { clock, findPaddle, headroom, money, stageLot } from "@/lib/client/format";
 import type { AuctionEvent, Lot, Paddle, State } from "@/lib/client/types";
 import { useAuctionState } from "@/lib/client/useAuctionState";
 import { useOrigin } from "@/lib/client/useOrigin";
-import { prewarm, useSpeech } from "@/lib/client/useSpeech";
+import { useGusPrep } from "@/lib/client/useGusPrep";
+import { useSpeech } from "@/lib/client/useSpeech";
 
 const PERSONA = "Gus";
 const PHASES = ["Bidding", "Going once", "Going twice", "Sold"] as const;
@@ -112,38 +112,13 @@ export default function StagePage() {
   const joinUrl = origin ? `${origin}/paddle${room ? `?room=${encodeURIComponent(room)}` : ""}` : "";
   const speech = useSpeech(state?.caption);
   const live = state?.status === "live";
-  const demo = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") === "1";
   const roomQ = room ? `?room=${encodeURIComponent(room)}` : "";
-  const [demoPhase, setDemoPhase] = useState<"intro" | "starting" | "running">("intro");
-  const [demoError, setDemoError] = useState<string | null>(null);
   const [auto, setAuto] = useState<{ phase: string; running: boolean } | null>(null);
 
-  // One model call writes a sentence per lot for Gus; ask for it whenever a waiting lot has none.
-  const needPitch = state?.lots.filter((l) => l.status === "pending" && !l.pitch).map((l) => l.id).join(",") ?? "";
-  useEffect(() => {
-    if (needPitch) post("/api/gus/prepare").catch(() => {});
-  }, [needPitch]);
+  useGusPrep(state);
 
-  // Voice ahead of time what Gus will need next: the coming lots and every bidder's name.
-  const warmKey = state
-    ? [...state.lots.filter((l) => l.status === "pending" || l.status === "open").slice(0, 3).map((l) => `${l.title}|${l.pitch ?? ""}|${l.consignor ?? ""}`), ...state.paddles.map((p) => p.name)].join("~")
-    : "";
+  // Follow autopilot (if this room runs one) so the stage can say when it is settling.
   useEffect(() => {
-    if (!state || !warmKey) return;
-    const texts: string[] = [];
-    for (const l of state.lots.filter((x) => x.status === "pending" || x.status === "open").slice(0, 3)) {
-      texts.push(FORMS.title(l.title));
-      if (l.pitch) texts.push(l.pitch);
-      if (l.consignor) texts.push(FORMS.from(l.consignor));
-    }
-    for (const p of state.paddles.slice(0, 12)) texts.push(FORMS.name(p.name), FORMS.thanks(p.name), FORMS.soldTo(p.name));
-    prewarm(texts);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- warmKey captures everything read from state here
-  }, [warmKey]);
-
-  // While a demo runs, follow autopilot so the stage can say when it is settling.
-  useEffect(() => {
-    if (!demo) return;
     let stop = false;
     const load = () =>
       fetch(`/api/autopilot${roomQ}`, { cache: "no-store" })
@@ -158,20 +133,7 @@ export default function StagePage() {
       stop = true;
       clearInterval(id);
     };
-  }, [demo, roomQ]);
-
-  async function startDemo() {
-    speech.start();
-    setDemoError(null);
-    setDemoPhase("starting");
-    try {
-      await post("/api/autopilot", { action: "start", autoClose: true });
-      setDemoPhase("running");
-    } catch (e) {
-      setDemoError(e instanceof Error ? e.message : "The demo could not start.");
-      setDemoPhase("intro");
-    }
-  }
+  }, [roomQ]);
 
   useEffect(() => {
     if (!live) return;
@@ -211,8 +173,6 @@ export default function StagePage() {
   ] as const;
   const premium = state.settings?.premiumPct ?? 0;
   const settling = auto?.phase === "closing";
-  const demoStarted = demoPhase === "running" || !!auto?.running || state.status !== "lobby" || state.paddles.length > 0;
-  const showIntro = demo && !demoStarted;
 
   return (
     <main className="theatre grid min-h-screen grid-rows-[auto_minmax(0,1fr)_auto] gap-[1.4vw] px-[2.2vw] py-[1.6vw] lg:h-screen lg:overflow-hidden">
@@ -446,46 +406,6 @@ export default function StagePage() {
         </section>
       </div>
       <NightInNumbersOverlay state={state} href={`/paypal${roomQ}`} />
-      {showIntro && (
-        <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-[var(--t-bg)]/90 p-4 backdrop-blur-sm">
-          <div role="dialog" aria-modal="true" aria-labelledby="demo-h" className="w-full max-w-2xl rounded-2xl border border-[var(--t-line)] bg-[var(--t-panel)] p-6 sm:p-10">
-            <p className={eyebrowDark}>Demo auction · about 4 minutes</p>
-            <h2 id="demo-h" className="display mt-3 text-4xl text-[var(--t-text)] sm:text-5xl">
-              Watch a full auction, start to settled.
-            </h2>
-            <ol className="mt-6 space-y-3 text-[15px] leading-relaxed text-[var(--t-muted)] sm:text-base">
-              <li>
-                <span className="num mr-2 text-clay-on-dark">1</span>Three AI bidders each get a paddle. A paddle is a real PayPal sandbox authorization hold.
-              </li>
-              <li>
-                <span className="num mr-2 text-clay-on-dark">2</span>Gus, the auctioneer, sells three lots. Every bid is checked against the bidder&apos;s hold.
-              </li>
-              <li>
-                <span className="num mr-2 text-clay-on-dark">3</span>At the end PayPal captures each winner&apos;s total, releases the other holds, pays out the proceeds and sends receipts.
-              </li>
-            </ol>
-            <p className="mt-5 text-sm text-[var(--t-muted)]">Want to bid against them? Scan the code on the stage with your phone once it starts.</p>
-            {demoError && (
-              <p role="alert" className="mt-4 text-sm font-medium text-clay-on-dark">
-                {demoError}
-              </p>
-            )}
-            <div className="mt-7 flex flex-wrap items-center gap-4">
-              <button
-                type="button"
-                onClick={startDemo}
-                disabled={demoPhase === "starting"}
-                className="rounded-md bg-canvas px-6 py-3 text-base font-medium text-ink transition-colors hover:bg-white disabled:opacity-60"
-              >
-                {demoPhase === "starting" ? "Placing the PayPal holds…" : "Start the auction, with sound"}
-              </button>
-              <a href="/" className="text-sm text-[var(--t-muted)] underline underline-offset-4 hover:text-[var(--t-text)]">
-                Back
-              </a>
-            </div>
-          </div>
-        </div>
-      )}
     </main>
   );
 }

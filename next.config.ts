@@ -15,6 +15,7 @@ const nextConfig: NextConfig = {
     ];
     return [
       { source: "/stage", headers: isolate },
+      { source: "/demo", headers: isolate },
       { source: "/gus/:path*", headers: isolate },
     ];
   },

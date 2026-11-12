@@ -2,6 +2,7 @@ import Link from "next/link";
 import { SandboxBadge } from "@/components/SandboxBadge";
 import { DemoRun } from "@/components/DemoRun";
 import { StartRoom } from "@/components/StartRoom";
+import { JoinRoom } from "@/components/JoinRoom";
 import { Eyebrow } from "@/components/ui";
 import { AUCTION_TYPE_LIST } from "@/lib/auction/auctionTypes";
 
@@ -78,43 +79,39 @@ export default function Home() {
       </section>
 
       <section aria-labelledby="start-h" className="mx-auto w-full max-w-6xl px-4 pb-20 sm:px-6 2xl:max-w-[88rem]">
-        <h2 id="start-h" className="display text-3xl text-ink sm:text-4xl">
-          Three things to try
+        <h2 id="start-h" className="sr-only">
+          Get started
         </h2>
-        <ol className="mt-8 grid gap-6 lg:grid-cols-3">
-          <li className="flex flex-col rounded-2xl border border-clay/40 bg-surface p-7 shadow-soft">
-            <span className="num display text-2xl text-clay-ink">01</span>
-            <h3 className="display mt-2 text-2xl text-ink">Watch a demo auction</h3>
-            <p className="mt-3 flex-1 text-[15px] leading-relaxed text-ink-2">
-              Three AI bidders, three lots, about four minutes. Each bidder has a real PayPal sandbox hold, Gus calls the bids out loud, and the auction settles itself at the end. No sign-in.
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div className="flex flex-col rounded-2xl border border-clay/40 bg-surface p-7 shadow-soft sm:p-9">
+            <p className="eyebrow text-clay-ink">See how it works</p>
+            <h3 className="display mt-2 text-3xl text-ink sm:text-4xl">Watch a demo auction</h3>
+            <p className="mt-3 text-[15px] leading-relaxed text-ink-2">
+              The blueprint, running. Three AI bidders with real PayPal sandbox holds, Gus calling the lots out loud, and beside them each bidder&apos;s decision and every PayPal call as it lands. About four minutes, and it settles itself. No sign-in.
             </p>
-            <div className="mt-6">
+            <ul className="mt-4 space-y-1.5 text-sm text-ink-2">
+              <li>&middot; Gemini deciding, code enforcing the limits</li>
+              <li>&middot; Holds, captures, releases, payout and receipts, with PayPal ids</li>
+              <li>&middot; The report (AG Studio) and the hold timeline (Bryntum) at the end</li>
+            </ul>
+            <div className="mt-auto pt-7">
               <DemoRun />
             </div>
-          </li>
-          <li className="flex flex-col rounded-2xl border border-line bg-surface p-7 shadow-soft">
-            <span className="num display text-2xl text-clay-ink">02</span>
-            <h3 className="display mt-2 text-2xl text-ink">Follow the money</h3>
-            <p className="mt-3 flex-1 text-[15px] leading-relaxed text-ink-2">
-              The PayPal page lists every request as it happens: each hold, each capture, each release, the payout and the receipts, with the id PayPal returned. The demo links to it when it ends.
-            </p>
-            <div className="mt-6">
-              <Link href="/paypal" className="inline-flex items-center gap-2 rounded-md border border-line-strong bg-surface px-6 py-3.5 text-base font-medium text-ink transition-colors hover:border-ink-2 hover:bg-sunken">
-                Open the PayPal page <span aria-hidden>&rarr;</span>
-              </Link>
-            </div>
-          </li>
-          <li className="flex flex-col rounded-2xl border border-line bg-surface p-7 shadow-soft">
-            <span className="num display text-2xl text-clay-ink">03</span>
-            <h3 className="display mt-2 text-2xl text-ink">Host your own auction</h3>
-            <p className="mt-3 flex-1 text-[15px] leading-relaxed text-ink-2">
-              A private room of your own: name the event, add lots, put the stage on a screen and let people bid from their phones. The same PayPal flow runs for real bidders.
+          </div>
+          <div id="own" className="flex scroll-mt-24 flex-col rounded-2xl border border-line bg-surface p-7 shadow-soft sm:p-9">
+            <p className="eyebrow text-clay-ink">Use it for real</p>
+            <h3 className="display mt-2 text-3xl text-ink sm:text-4xl">Run your own auction</h3>
+            <p className="mt-3 text-[15px] leading-relaxed text-ink-2">
+              Host one: you get a room code, your own event and lots, a stage for the big screen and a host page that settles everything with one button. Or join one someone else is hosting.
             </p>
             <div className="mt-6">
               <StartRoom />
             </div>
-          </li>
-        </ol>
+            <div className="mt-7 border-t border-line pt-6">
+              <JoinRoom />
+            </div>
+          </div>
+        </div>
       </section>
 
       <section aria-labelledby="how-h" className="border-y border-line bg-surface/60">

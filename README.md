@@ -13,26 +13,28 @@ Built for charity galas first, and also for estate and consignment sales, art an
 No sign-in and no keys are needed on the live app.
 
 1. Open https://going-twice.onrender.com. The first load can take up to a minute while the free server wakes.
-2. Click **Watch the demo auction**, then **Start the auction, with sound**.
-3. Watch. Three AI bidders each get a real PayPal sandbox hold. Gus, the auctioneer, sells three lots out loud. It takes about four minutes and settles itself.
-4. When it ends, click **See every PayPal call for this auction**. The PayPal page lists each hold, capture, release, payout and receipt with the id PayPal returned.
+2. Click **Watch the demo auction**, then **Start the demo, with sound**.
+3. The demo page shows the whole system side by side, for about four minutes:
+   - **The auction:** the lot, the current bid, and Gus, the AI auctioneer, calling it out loud.
+   - **The AI bidders:** three bidders, each with a real PayPal sandbox hold. Every decision is listed with who made it: Gemini, or a rule in code (for example, "over my limit").
+   - **PayPal, live:** every request the server sends to PayPal, with the id PayPal returned.
+   - **Under the hood:** what each service (PayPal APIs, Gemini, Kokoro, AG Studio, Bryntum, Channel3, Render) is doing in this auction.
+4. When it settles, open **Every PayPal call for this auction**, the **settlement report** (AG Studio) or the **hold timeline** (Bryntum).
 
-To bid against the AI bidders yourself, scan the code on the stage with your phone while the demo runs and add a paddle with the sandbox test card.
+To bid against the AI bidders yourself, click **Bid yourself** while the demo runs and use the sandbox test card.
 
-## The three things in the app
+## Then run your own
 
-| | What it is | Where |
-|---|---|---|
-| 1 | **A demo auction** that runs by itself, so you can see the whole product without setting anything up | Home → *Watch the demo auction* |
-| 2 | **The PayPal page**: every PayPal request for one auction, live, then the final summary | *PayPal* in the top bar, or the link at the end of the demo |
-| 3 | **Host your own auction**: a private room with your event, your lots and real bidders on their phones | Home → *Host an auction* |
+The demo shows how it works. Your own auction is the product itself.
 
-Hosting has four steps, and the Host page shows which one is next:
+- **Host an auction** creates a private room with its own **room code**. The Host page shows the code and a QR code, and walks through four steps:
+  1. **Set it up.** Name the event, pick the auction type and add lots. You can photograph an item and let the app draft the lot.
+  2. **Bring in bidders.** Put the stage on a big screen. Bidders join with the code or the QR, and PayPal holds the amount they choose. That hold is their paddle.
+  3. **Run each lot.** Press Start. Gus calls the bids, and the hammer falls by itself when bidding stops.
+  4. **Close and settle.** One button. PayPal charges each winner what they won, releases every other hold, pays out the proceeds and sends receipts.
+- **Join an auction**: type a room code on the home page to bid, or to watch its stage.
 
-1. **Set it up.** Name the event, pick the auction type and add lots. You can photograph an item and let the app draft the lot.
-2. **Bring in bidders.** Put the stage on a big screen. Bidders scan its code, and PayPal holds the amount they choose. That hold is their paddle.
-3. **Run each lot.** Press Start. Gus calls the bids, and the hammer falls by itself when bidding stops.
-4. **Close and settle.** One button. PayPal charges each winner what they won, releases every other hold, pays out the proceeds and sends receipts.
+The **PayPal** page in the top bar follows the money for whichever room you are in.
 
 ## The problem
 

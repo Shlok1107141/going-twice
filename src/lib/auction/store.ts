@@ -199,6 +199,12 @@ export function peekState(): State {
   return (pristine.__gtPristine ??= freshStore().state);
 }
 
+/** True when this room has been opened before (in memory or saved to disk). */
+export function roomExists(): boolean {
+  const room = currentRoom();
+  return rooms().has(room) || (persistEnabled() && fs.existsSync(dataFile(room)));
+}
+
 /** Rooms currently held in memory (diagnostics / break tests). */
 export function roomCount(): number {
   return rooms().size;

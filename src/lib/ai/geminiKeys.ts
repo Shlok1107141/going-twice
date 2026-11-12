@@ -36,7 +36,9 @@ export async function geminiFetch(url: string, init: RequestInit = {}): Promise<
   const order = keys.map((_, i) => keys[(st.next + i) % keys.length]);
   st.next = (st.next + 1) % keys.length;
   const ready = order.filter((k) => (st.benched.get(`${k}|${model}`) ?? 0) <= now);
-  const tryKeys = ready.length ? ready : order; // all benched: try anyway, quota may have reset
+  // Every key is out of quota for this model: answer 429 at once so the caller moves on to its next model.
+  if (!ready.length) return Response.json({ error: { code: 429, message: "All keys are rate-limited for this model" } }, { status: 429 });
+  const tryKeys = ready;
   let last: Response | null = null;
   for (const key of tryKeys) {
     const headers = new Headers(init.headers);

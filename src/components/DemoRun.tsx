@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { btn } from "@/components/ui";
 
-/** One click for judges: a fresh private room, then the stage, where the demo auction starts with sound. */
+/** One click for judges: a fresh private room, then the demo page, where the demo auction starts with sound. */
 export function DemoRun({ label = "Watch the demo auction" }: { label?: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -15,9 +15,9 @@ export function DemoRun({ label = "Watch the demo auction" }: { label?: string }
       const res = await fetch("/api/room/new", { cache: "no-store" });
       const { room } = (await res.json()) as { room?: string };
       if (!room) throw new Error("no room");
-      // A full page load (not a client-side route change): the stage needs its own response headers
+      // A full page load (not a client-side route change): the demo page needs its own response headers
       // so Gus's in-browser voice can use several threads.
-      window.location.assign(`/stage?room=${encodeURIComponent(room)}&demo=1`);
+      window.location.assign(`/demo?room=${encodeURIComponent(room)}`);
     } catch {
       setError("Could not create a room. Try again.");
       setBusy(false);

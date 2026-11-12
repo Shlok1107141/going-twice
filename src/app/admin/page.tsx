@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AuctionTypePanel } from "@/components/admin/AuctionTypePanel";
 import { EventPanel } from "@/components/admin/EventPanel";
@@ -7,6 +8,7 @@ import { LotsEditor } from "@/components/admin/LotsEditor";
 import { AutopilotPanel } from "@/components/admin/AutopilotPanel";
 import { SnapLot } from "@/components/admin/SnapLot";
 import { NightInNumbers } from "@/components/proof/NightInNumbers";
+import { QrCode } from "@/components/QrCode";
 import { PayPalProof } from "@/components/proof/PayPalProof";
 import { SandboxBadge } from "@/components/SandboxBadge";
 import { useRoom, withRoom } from "@/components/SiteNav";
@@ -194,8 +196,26 @@ function HostGuide({ room, done }: { room: string; done: [boolean, boolean, bool
     ["Close and settle", "Press Close auction. PayPal charges each winner what they won, releases every other hold, pays out the proceeds and sends receipts.", closed],
   ];
   const next = steps.findIndex((s) => !s[2]);
+  const origin = useOrigin();
+  const join = room ? `${origin}${withRoom("/paddle", room)}` : "";
   return (
     <section aria-labelledby="guide-h" className={panel}>
+      {room ? (
+        <div className="mb-6 flex flex-wrap items-center gap-6 rounded-lg border border-clay/40 bg-clay-soft/40 p-5">
+          {origin && <QrCode value={join} label="QR code: join this auction as a bidder" className="h-24 w-24 shrink-0" />}
+          <div className="min-w-0">
+            <p className="eyebrow text-clay-ink">Your room code</p>
+            <p className="num mt-1 font-mono text-4xl tracking-[0.2em] text-ink">{room.toUpperCase()}</p>
+            <p className="mt-2 text-sm text-ink-2">
+              Bidders open {origin ? new URL(origin).host : "this site"}, choose <span className="font-medium">Join and bid</span> and type this code, or scan the QR code here or on the stage. Keep this page&apos;s link: it is how you get back to your auction.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <p className="mb-6 rounded-lg border border-line bg-sunken/60 p-4 text-sm text-ink-2">
+          This is the shared practice room. For an auction of your own, with its own room code, use <Link className="underline underline-offset-4" href="/#own">Host an auction</Link> on the home page.
+        </p>
+      )}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <SectionTitle id="guide-h" hint="Four steps. The highlighted one is what to do next.">
           How to host
@@ -232,6 +252,16 @@ export default function AdminPage() {
   const { state, error, refresh } = useAuctionState(1000);
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const live = state?.status === "live";
+
+  // Keep the auction moving (going once, going twice, sold) even when no stage screen is open.
+  useEffect(() => {
+    if (!live) return;
+    const id = setInterval(() => {
+      post("/api/auctioneer/tick").catch(() => {});
+    }, 2000);
+    return () => clearInterval(id);
+  }, [live]);
 
   async function act(key: string, path: string, body?: unknown) {
     setBusy(key);
