@@ -5,7 +5,7 @@
 Built for charity galas first, and also for estate and consignment sales, art and collectibles (with a buyer's premium) and farm auctions.
 
 - **Live app:** https://going-twice.onrender.com
-- **Video (under 3 minutes):** https://youtu.be/u8RJl0X-BTE
+- **Video (under 3 minutes):** https://youtu.be/Sp7HnEs1H9M
 - Everything runs in the **PayPal sandbox**. No real money moves.
 
 ## Try it in two minutes
@@ -32,9 +32,30 @@ The demo shows how it works. Your own auction is the product itself.
   2. **Bring in bidders.** Put the stage on a big screen. Bidders join with the code or the QR, and PayPal holds the amount they choose. That hold is their paddle.
   3. **Run each lot.** Press Start. Gus calls the bids, and the hammer falls by itself when bidding stops.
   4. **Close and settle.** One button. PayPal charges each winner what they won, releases every other hold, pays out the proceeds and sends receipts.
-- **Join an auction**: type a room code on the home page to bid, or to watch its stage.
+- **Join an auction**: open **Join auction** in the top bar and type the room code to bid, or to watch its stage.
 
-Every auction page (stage, bid, host, PayPal, report, timeline) belongs to a room. Inside a room the top bar links them all, and the **PayPal** page follows that room's money.
+### Finding your way around
+
+| Where you are | Top bar |
+|---|---|
+| Not in a room | **Join auction** · **Demo** · **PayPal** (how to set up PayPal or a card to bid) |
+| Inside a room | **Auction** (the big screen) · **Bid** · **Host** · **PayPal** (this room's PayPal calls) · **Report** · **Timeline** |
+
+A light/dark switch sits at the end of the top bar, and the auction stage follows it.
+
+## Why it fits the hackathon tracks
+
+| Track | Why Going Twice belongs there |
+|---|---|
+| **Best Use of PayPal + AI** | PayPal is the whole money path (Orders v2 AUTHORIZE, partial final capture, void, Payouts, Invoicing, Webhooks), and AI runs the room, with one rule: AI proposes, code decides money. |
+| **Best Use of Agentic Commerce** | AI agents bid with real money behind them: absentee agents and demo bidders act inside a PayPal hold, and code enforces every limit. Each decision is shown with who made it. |
+| **Best Demo Delivery** | One click runs a full auction, from holds to payout, with the auction, the agents' decisions and every PayPal call side by side. |
+| **Most Impactful** | Charity galas, estate sales, art and farm auctions all lose money at the payment line. Here the checkout happens before the first bid. |
+| **AG Grid** | AG Studio settlement report with custom widgets and an assistant (`/report` in any room). |
+| **Bryntum** | Scheduler timeline of every hold, from authorization to capture or release (`/timeline` in any room). |
+| **Channel3** | Retail listings behind a photographed lot's estimated value (Host page, Snap a lot). |
+| **APIMatic** | Its PayPal skills shaped the REST client's timeouts, retries and typed errors (`docs/APIMATIC.md`). |
+| **Render** | Hosted on Render from `render.yaml`. A Render Workflows settlement is implemented in `workflows/` and switched off by default. |
 
 ## The problem
 
