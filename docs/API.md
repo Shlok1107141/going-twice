@@ -74,3 +74,20 @@ Money rules (all integer cents in code):
 - Estate payout: per sold lot `credit = hammer - round(hammer x commissionPct / 100)`, summed per consignor email; the house gets `captured - sum(credits)`. Items always sum to the captured total. The ledger gets one `payout` row per item (all sharing the batch's `paypalId`) with notes like `consignor 85% / house 15%: <lots> to consignor <email>`. A lot without a consignor email goes to the house.
 - Idempotency is unchanged: `payoutDone` plus the `close-<auctionId>` batch id mean a second close moves no money.
 - Gus: persona and vocabulary per type are passed into the Claude prompt and the template lines (`{consignor}`, `{each}` per-head quotes, "plus buyer's premium").
+
+## Close hardening, payout retry (break-test pass)
+See `docs/BREAK-TESTS.md` for the cases and results.
+
+- **Room freeze.** From the moment a close starts (and across a retried close after a failed capture) the room accepts no new paddles, lot starts, added lots or bids (409 / `{ok:false}` "Auction is closing"). `POST /api/reset` and `/api/auction/type` return 409 while a close is running; otherwise they void the old auction's live holds (best effort) before resetting.
+- **Payout failure no longer blocks the close.** Captures/voids are final, receipts go out, `status` becomes `closed`, and the ledger gets one `payout` row with `status: "PENDING_RETRY"` (note `payout pending — retry (POST /api/payout/retry): <reason>`). `State` gains `payoutStatus?: { state: "sent"|"retry"|"none"; amount; error?; attempts; batchId? }`. Ledger statuses `FAILED`, `PENDING_RETRY`, `RETRIED`, `DENIED` never count toward totals.
+
+| Method + path | Body | Response |
+|---|---|---|
+| GET `/api/payout/retry` | – | `{available:true, pending, payoutStatus}` (`pending` = closed and payout still to send) |
+| POST `/api/payout/retry` | `{ledgerId?}` (optional; must be a payout row of the room if given) | `{ok, retried, alreadyPaid, payoutStatus, totals, state}`; 200 when paid (or already paid: `retried:false`, no money moves), 502 `{ok:false, error}` when PayPal still refuses, 409 if the auction is not closed or a close is running. Same `sender_batch_id` every attempt (PayPal never pays it twice); concurrent calls share one attempt. On success the pending row becomes `RETRIED` and new `payout` rows are added. |
+| POST `/api/test/hooks` | `{failPayout?: "INSUFFICIENT_FUNDS", times?, failCapture?: n, gemini429?: n}` | Fault injection for `scripts/break-tests.mjs`; 404 unless `GT_TEST_HOOKS=1` (never with `PAYPAL_ENV=live`). |
+
+- **Reads are free.** `GET /api/state` and `/api/health` never create a room: an unused code returns a shared pristine lobby. `/api/health` returns `{ok, demoMode, status, rooms, uptimeS, ts}`.
+- **Input.** Names, agent instructions and lot titles lose control / zero-width / bidi characters (HTML is not escaped server-side; render as text). Max 200 paddles and 40 lots per room. Paddle numbers are unique even for parallel registrations.
+- **Snap-a-lot** (`POST /api/lot/snap`): non-image bytes 400, body over 4 MB 413, Gemini rate-limited on every key/model 429 + `Retry-After: 60`, no key 503. Gemini features use `GEMINI_API_KEY` or, if unset, the first of `GEMINI_API_KEYS`.
+- **Report agent** (`POST /api/report-agent`): body must be a Gemini `{contents:[...]}` request (400 otherwise), max 512 KB, 20 requests/min per instance (429).
