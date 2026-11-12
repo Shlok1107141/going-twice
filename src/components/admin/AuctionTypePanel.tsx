@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { AUCTION_TYPE_LIST, typeConfig } from "@/lib/auction/auctionTypes";
 import type { AuctionSettings, AuctionType } from "@/lib/client/types";
+import { btn, panel, SectionTitle } from "@/components/ui";
 
 type Body = { type: AuctionType; settings: { premiumPct?: number; commissionPct?: number; organizerEmail?: string; consignorEmails?: string[] } };
 
@@ -35,14 +36,15 @@ export function AuctionTypePanel({ current, settings, disabled, onApply }: { cur
     onApply({ type: picked, settings: s });
   }
 
-  const input = "mt-1 block w-28 rounded-md border border-stone-300 bg-white px-2 py-1.5 text-sm font-normal text-stone-900";
-  const label = "text-xs font-bold uppercase tracking-wider text-stone-700";
+  const input = "num mt-2 block w-28 rounded-md border border-line-strong bg-surface px-3 py-2 text-sm font-normal text-ink focus:border-ink focus:outline-none";
+  const label = "text-sm font-medium text-ink-2";
 
   return (
-    <section className="rounded-2xl border border-stone-300 bg-white p-4 shadow-sm" aria-labelledby="type-h">
-      <h2 id="type-h" className="font-bold text-stone-900">Auction type</h2>
-      <p className="mb-3 text-sm text-stone-600">Built for the school gala. Works for any live auction. Applying a type resets this room with that type&apos;s sample lots.</p>
-      <div role="radiogroup" aria-labelledby="type-h" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <section className={panel} aria-labelledby="type-h">
+      <SectionTitle id="type-h" hint="Built for the school gala. Works for any live auction. Applying a type resets this room with that type&apos;s sample lots.">
+        Auction type
+      </SectionTitle>
+      <div role="radiogroup" aria-labelledby="type-h" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {AUCTION_TYPE_LIST.map((t) => {
           const on = picked === t.type;
           return (
@@ -52,17 +54,17 @@ export function AuctionTypePanel({ current, settings, disabled, onApply }: { cur
               role="radio"
               aria-checked={on}
               onClick={() => choose(t.type)}
-              className={`rounded-xl border-2 p-3 text-left transition ${on ? "border-amber-600 bg-amber-50" : "border-stone-300 bg-white hover:border-amber-400"}`}
+              className={`flex flex-col rounded-lg border p-5 text-left transition-colors ${on ? "border-ink bg-sunken/60 ring-1 ring-ink" : "border-line bg-surface hover:border-line-strong"}`}
             >
-              <span aria-hidden className="text-3xl">{t.icon}</span>
-              <span className="mt-1 block font-bold text-stone-900">
+              <span aria-hidden className="text-2xl">{t.icon}</span>
+              <span className="display mt-3 block text-xl text-ink">
                 {t.label}
-                {t.type === current && <span className="ml-2 rounded-full bg-stone-900 px-2 py-0.5 text-xs text-amber-100">current</span>}
+                {t.type === current && <span className="ml-2 rounded-full bg-ink px-2 py-0.5 align-middle font-sans text-[11px] text-canvas">current</span>}
               </span>
-              <span className="mt-1 block text-sm text-stone-700">{t.blurb}</span>
-              <span className="mt-2 flex flex-wrap gap-1">
+              <span className="mt-2 block text-sm leading-relaxed text-ink-2">{t.blurb}</span>
+              <span className="mt-auto flex flex-wrap gap-1 pt-4">
                 {t.keyNumbers.map((k) => (
-                  <span key={k} className="rounded bg-stone-100 px-1.5 py-0.5 text-xs font-semibold text-stone-800">{k}</span>
+                  <span key={k} className="rounded-sm bg-sunken px-1.5 py-0.5 text-xs text-ink-2">{k}</span>
                 ))}
               </span>
             </button>
@@ -70,7 +72,7 @@ export function AuctionTypePanel({ current, settings, disabled, onApply }: { cur
         })}
       </div>
 
-      <div className="mt-4 flex flex-wrap items-end gap-3">
+      <div className="mt-6 flex flex-wrap items-end gap-4">
         {cfg.editable.premium && (
           <label className={label}>
             Buyer&apos;s premium %
@@ -94,19 +96,19 @@ export function AuctionTypePanel({ current, settings, disabled, onApply }: { cur
           </label>
         )}
         {asking ? (
-          <span role="alertdialog" aria-label="Confirm auction type" className="inline-flex items-center gap-2 rounded-lg border-2 border-rose-700 bg-rose-50 p-1">
-            <button type="button" autoFocus onClick={apply} className="rounded-md bg-rose-700 px-3 py-1.5 font-bold text-white hover:bg-rose-800">
+          <span role="alertdialog" aria-label="Confirm auction type" className="inline-flex items-center gap-1 rounded-md border border-danger/40 bg-danger-soft p-1">
+            <button type="button" autoFocus onClick={apply} className={btn.danger}>
               Yes, reset as {cfg.label}
             </button>
-            <button type="button" onClick={() => setAsking(false)} className="rounded-md px-3 py-1.5 font-bold text-stone-800 hover:bg-stone-200">Cancel</button>
+            <button type="button" onClick={() => setAsking(false)} className="rounded-md px-3 py-2 text-sm text-ink-2 hover:bg-surface">Cancel</button>
           </span>
         ) : (
-          <button type="button" disabled={disabled} onClick={() => setAsking(true)} className="rounded-lg bg-amber-600 px-4 py-2 font-bold text-white hover:bg-amber-700 disabled:opacity-50">
+          <button type="button" disabled={disabled} onClick={() => setAsking(true)} className={btn.secondary}>
             Apply type &amp; reset room
           </button>
         )}
       </div>
-      <p className="mt-2 text-sm text-stone-600">{cfg.payoutLabel}.</p>
+      <p className="mt-4 text-sm text-muted">{cfg.payoutLabel}.</p>
     </section>
   );
 }

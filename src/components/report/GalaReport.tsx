@@ -12,6 +12,7 @@ import { buildGalaData, hasReportData, sampleState } from "./data";
 import { galaReport, PAGE_TITLES } from "./report";
 import { galaTheme } from "./theme";
 import { createGalaWidgets, type GalaRegistry } from "./widgets";
+import { btn, Eyebrow } from "@/components/ui";
 
 if (process.env.NODE_ENV !== "production") enableStudioDevValidations();
 
@@ -80,12 +81,12 @@ export function GalaReport() {
   };
 
   return (
-    <div className="mx-auto flex h-dvh w-full max-w-[1500px] flex-col px-4 pb-4 pt-5 sm:px-6">
-      <header className="mb-3 flex flex-wrap items-end justify-between gap-3">
+    <div className="mx-auto flex h-[calc(100dvh-var(--nav-h))] min-h-[720px] w-full max-w-[1500px] flex-col px-4 pb-6 pt-8 sm:px-6">
+      <header className="mb-6 flex flex-wrap items-end justify-between gap-6 border-b border-line pb-6">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">Going Twice</p>
-          <h1 className="font-serif text-3xl font-black leading-tight text-stone-900 sm:text-4xl">Gala Report</h1>
-          <p className="mt-0.5 text-sm text-stone-600">
+          <Eyebrow>For the organizer</Eyebrow>
+          <h1 className="display mt-2 text-4xl text-ink sm:text-5xl">Gala Report</h1>
+          <p className="mt-3 text-base text-ink-2">
             {useSample
               ? "Sample gala data, not a real auction."
               : state
@@ -95,15 +96,15 @@ export function GalaReport() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {useSample && (
-            <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold uppercase tracking-wider text-amber-900">Sample data</span>
+            <span className="rounded-full bg-clay-soft px-3 py-1 text-xs font-medium text-clay-ink">Sample data</span>
           )}
-          <nav className="flex rounded-full border border-stone-300 bg-white/70 p-0.5 text-sm" aria-label="Report pages">
+          <nav className="flex rounded-md border border-line bg-surface p-1 text-sm" aria-label="Report pages">
             {Object.entries(PAGE_TITLES).map(([id, label]) => (
               <button
                 key={id}
                 onClick={() => choosePage(id)}
                 aria-pressed={pageId === id}
-                className={`rounded-full px-3.5 py-1 font-medium transition ${pageId === id ? "bg-stone-900 text-amber-50" : "text-stone-700 hover:bg-amber-100"}`}
+                className={`rounded-sm px-3.5 py-1.5 transition-colors ${pageId === id ? "bg-ink text-canvas" : "text-ink-2 hover:bg-sunken"}`}
               >
                 {label}
               </button>
@@ -112,14 +113,14 @@ export function GalaReport() {
           <button
             onClick={() => changeMode(mode === "edit" ? "view" : "edit")}
             aria-pressed={mode === "edit"}
-            className={`rounded-full border px-3.5 py-1 text-sm font-medium transition ${mode === "edit" ? "border-amber-700 bg-amber-100 text-amber-900" : "border-stone-300 bg-white/70 text-stone-700 hover:bg-amber-100"}`}
+            className={`${btn.small} ${mode === "edit" ? "!border-ink !bg-sunken" : ""}`}
           >
             {mode === "edit" ? "Done editing" : "Edit report"}
           </button>
           {state && (
             <button
               onClick={() => (useSample ? setSample(null) : setSample(sampleState()))}
-              className="rounded-full border border-stone-300 bg-white/70 px-3.5 py-1 text-sm font-medium text-stone-700 transition hover:bg-amber-100"
+              className={btn.small}
             >
               {useSample ? "Back to live data" : "Load sample data"}
             </button>
@@ -153,7 +154,7 @@ export function GalaReport() {
         )}
       </div>
 
-      <footer className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-stone-500">
+      <footer className="mt-4 flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
         <span>
           {agent?.configured
             ? "Ask the report agent for charts: open the AI chat in Edit mode."
@@ -169,24 +170,24 @@ export function GalaReport() {
 
 function EmptyReport({ error, onSample }: { error: boolean; onSample: () => void }) {
   return (
-    <div className="grid h-full place-items-center rounded-3xl border border-dashed border-stone-300 bg-white/50 p-8 text-center">
+    <div className="grid h-full place-items-center rounded-xl border border-line bg-surface p-8 text-center shadow-soft">
       <div className="max-w-md">
-        <div className="text-5xl" aria-hidden>
-          {"\u{1F528}"}
+        <div className="rule-ornament mx-auto w-40" aria-hidden>
+          <span className="h-2 w-2 rotate-45 bg-clay" />
         </div>
-        <h2 className="mt-3 font-serif text-2xl font-bold text-stone-900">No gala data yet</h2>
-        <p className="mt-2 text-sm text-stone-600">
+        <h2 className="display mt-6 text-4xl text-ink">No gala data yet</h2>
+        <p className="mt-3 leading-relaxed text-ink-2">
           {error
             ? "Couldn't reach the auction. Check the server, or look at a sample report in the meantime."
             : "Once the first lot sells, bids, holds and payouts appear here live. Want to see what the report looks like?"}
         </p>
         <button
           onClick={onSample}
-          className="mt-5 rounded-full bg-amber-700 px-6 py-2.5 text-sm font-bold text-amber-50 shadow transition hover:bg-amber-800"
+          className={`${btn.primary} mt-8`}
         >
           Load sample gala data
         </button>
-        <p className="mt-2 text-xs text-stone-500">Sample data stays in your browser and is clearly labelled.</p>
+        <p className="mt-3 text-xs text-muted">Sample data stays in your browser and is clearly labelled.</p>
       </div>
     </div>
   );
