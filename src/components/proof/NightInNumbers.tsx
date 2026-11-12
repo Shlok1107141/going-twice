@@ -62,7 +62,7 @@ export function NightInNumbers({ state, tone = "light", compact = false, classNa
 }
 
 /** Stage close card: arrives after a pause so the SOLD moment is never cut off; dismissible. */
-export function NightInNumbersOverlay({ state }: { state: State }) {
+export function NightInNumbersOverlay({ state, href }: { state: State; href?: string }) {
   const [hidden, setHidden] = useState(false);
   if (state.status !== "closed" || hidden) return null;
   return (
@@ -77,6 +77,11 @@ export function NightInNumbersOverlay({ state }: { state: State }) {
           Dismiss
         </button>
         <NightInNumbers state={state} tone="dark" compact />
+        {href && (
+          <a href={href} className="mt-4 inline-flex items-center gap-2 rounded-md bg-canvas px-5 py-2.5 text-sm font-medium text-ink transition-colors hover:bg-white">
+            See every PayPal call for this auction <span aria-hidden>&rarr;</span>
+          </a>
+        )}
       </div>
     </div>
   );

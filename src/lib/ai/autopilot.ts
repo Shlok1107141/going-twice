@@ -4,7 +4,7 @@
 // engine's placeBid, which re-validates it like a human bid. Server-only.
 import { callClaude, claudeEnabled, extractJson } from "./claude";
 import { nextBidFor } from "./agent";
-import { money } from "./auctioneer";
+import { money, preparePitches } from "./auctioneer";
 import { EngineError, close, createPaddle, hammer, placeBid, startLot, tick, tickSpeed } from "@/lib/auction/engine";
 import { getInternal, getState, pushEvent, type Lot } from "@/lib/auction/store";
 
@@ -51,11 +51,15 @@ export type AutopilotStatus = {
 };
 
 type Agent = { spec: PersonaSpec; paddleId: string; busy: boolean; key: string; actAt: number; dropped: boolean };
-type Run = { status: AutopilotStatus; stop: boolean; agents: Agent[]; auctionId: string };
+type Run = { status: AutopilotStatus; stop: boolean; agents: Agent[]; auctionId: string; lotBids: number };
 
-export const MAX_LOTS = 4;
-export const MAX_MS = 5 * 60 * 1000;
-const AI_BUDGET = Number(process.env.AUTOPILOT_AI_BUDGET) > 0 ? Number(process.env.AUTOPILOT_AI_BUDGET) : 45;
+export const MAX_LOTS = 3;
+export const MAX_MS = 8 * 60 * 1000;
+/** A demo lot should not run forever: after this many persona bids on a lot the personas stand down (they still answer a human). */
+const MAX_PERSONA_BIDS = 5;
+/** Demo galas that may run at once in this process (each has its own room and its own PayPal holds). */
+const MAX_RUNS = 4;
+const AI_BUDGET = Number(process.env.AUTOPILOT_AI_BUDGET) > 0 ? Number(process.env.AUTOPILOT_AI_BUDGET) : 12;
 
 const g = globalThis as unknown as { __gtAutopilot?: Map<string, Run>; __gtApAi?: { last: number; fails: number; pauseUntil: number } };
 const runs = () => (g.__gtAutopilot ??= new Map());
@@ -142,7 +146,10 @@ async function consider(run: Run, a: Agent, lotId: string): Promise<void> {
     }
     // Collector waits: moves only once the room has gone quiet.
     const idle = ((Date.now() - getInternal().lastActivityAt) / 1000) * tickSpeed();
-    if (a.spec.style === "collector" && idle < 6 && lot.phase === "bidding") return;
+    if (a.spec.style === "collector" && idle < 8 && lot.phase === "bidding") return;
+    // Keep the demo moving: once the personas have traded enough bids they let the lot go, unless a human is leading.
+    const leader = s.paddles.find((x) => x.id === lot.highPaddleId);
+    if (run.lotBids >= MAX_PERSONA_BIDS && leader?.agent?.lotId === "__autopilot__") return;
 
     const high = s.paddles.find((x) => x.id === lot.highPaddleId);
     let d = await askModel(run, a, lot, next, high?.name);
@@ -158,7 +165,7 @@ async function consider(run: Run, a: Agent, lotId: string): Promise<void> {
     amount = r2(Math.min(amount, a.spec.cap, r2(p.holdAmount - p.committed)));
     if (amount < nextBidFor(lot2)) return;
     if (p.agent) p.agent.lastReasoning = d.reason;
-    placeBid(p.id, lotId, amount, "agent");
+    if (placeBid(p.id, lotId, amount, "agent").ok) run.lotBids++;
   } catch (e) {
     console.error("[autopilot]", (e as Error).message);
   } finally {
@@ -178,12 +185,12 @@ function pollAgents(run: Run, lotId: string): void {
     const key = `${lot.highPaddleId ?? "-"}:${lot.highBid}`;
     if (key !== a.key) {
       a.key = key;
-      const [lo, hi] = a.spec.style === "fast" ? [1100, 2600] : a.spec.style === "thrifty" ? [3000, 6000] : [1500, 3000];
+      const [lo, hi] = a.spec.style === "fast" ? [4200, 6500] : a.spec.style === "thrifty" ? [6500, 9500] : [5000, 7500];
       a.actAt = now + scaled(rand(lo, hi));
     }
     if (lot.highPaddleId === a.paddleId || now < a.actAt) continue;
     a.busy = true;
-    a.actAt = now + scaled(rand(2500, 4000)); // next look if nothing changes
+    a.actAt = now + scaled(rand(3500, 5000)); // next look if nothing changes
     void consider(run, a, lotId);
   }
 }
@@ -205,8 +212,9 @@ async function runLoop(run: Run): Promise<void> {
       for (const a of run.agents) {
         a.key = "";
         a.dropped = false;
-        a.actAt = Date.now() + scaled(rand(1200, 2200));
+        a.actAt = Date.now() + scaled(i === 0 ? rand(12500, 14500) : rand(10000, 12000)); // let Gus introduce the lot first
       }
+      run.lotBids = 0;
       startLot(lotId);
       while (!aborted()) {
         const cur = getState().lots.find((l) => l.id === lotId);
@@ -216,7 +224,7 @@ async function runLoop(run: Run): Promise<void> {
         await sleep(600);
       }
       if (aborted()) break;
-      await sleep(scaled(2500));
+      await sleep(scaled(6500)); // the SOLD moment gets its own beat
     }
     if (getInternal().auctionId !== run.auctionId) {
       st.phase = "stopped";
@@ -262,8 +270,10 @@ async function runLoop(run: Run): Promise<void> {
 
 export async function startAutopilot(opts: { personas?: PersonaSpec[]; lots?: string[]; autoClose?: boolean; roomKey?: string } = {}): Promise<AutopilotStatus> {
   const roomKey = opts.roomKey ?? "main";
-  // One autopilot per process, whichever room.
-  for (const r of runs().values()) if (r.status.running) throw new EngineError(409, "Autopilot is already running");
+  // One autopilot per room, and a small cap across rooms so a burst of visitors cannot flood PayPal.
+  if (runs().get(roomKey)?.status.running) throw new EngineError(409, "Autopilot is already running");
+  for (const [k, r] of runs()) if (!r.status.running && Date.now() - (r.status.startedAt ?? 0) > 30 * 60_000) runs().delete(k);
+  if ([...runs().values()].filter((r) => r.status.running).length >= MAX_RUNS) throw new EngineError(429, "Several demo auctions are running right now. Try again in a minute.");
   const s = getState();
   if (s.status === "closed") throw new EngineError(409, "Auction is closed. Reset it first.");
   const wanted = opts.lots?.length ? opts.lots : s.lots.filter((l) => l.status === "pending").map((l) => l.id);
@@ -276,8 +286,9 @@ export async function startAutopilot(opts: { personas?: PersonaSpec[]; lots?: st
     startedAt: Date.now(), deadlineAt: Date.now() + MAX_MS, lotIds, lotIndex: 0, aiCalls: 0,
     personas: specs.map((p) => ({ name: p.name, emoji: p.emoji, blurb: p.blurb, cap: p.cap, hold: p.hold ?? Math.round(p.cap * 1.5) })),
   };
-  const run: Run = { status, stop: false, agents: [], auctionId: getInternal().auctionId };
+  const run: Run = { status, stop: false, agents: [], auctionId: getInternal().auctionId, lotBids: 0 };
   runs().set(roomKey, run); // claim the slot before any await
+  void preparePitches().catch(() => {}); // one model call: a sentence per lot for Gus
 
   try {
     // Real sandbox test-card authorizations (simulated in demo mode), in parallel.

@@ -93,8 +93,9 @@ function RoomLinks({ room }: { room: string }) {
   const origin = useOrigin();
   const [copied, setCopied] = useState<string | null>(null);
   const links = [
-    ["Stage", "/stage", "Projector"],
-    ["Paddle", "/paddle", "Bidders' phones"],
+    ["Auction stage", "/stage", "The big screen"],
+    ["Bid", "/paddle", "Bidders' phones"],
+    ["PayPal", "/paypal", "Every PayPal call"],
     ["Report", "/report", "Settlement report"],
     ["Timeline", "/timeline", "Hold timeline"],
   ] as const;
@@ -112,7 +113,7 @@ function RoomLinks({ room }: { room: string }) {
       <SectionTitle id="links-h" hint={room ? `Every link below opens room ${room.toUpperCase()}.` : "Shared demo room. Start your own room from the home page for a private one."}>
         Room links
       </SectionTitle>
-      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {links.map(([label, path, hint]) => {
           const href = withRoom(path, room);
           return (
@@ -183,6 +184,49 @@ function PayoutRetry({ row, onRetried }: { row: LedgerRow; onRetried: () => Prom
   );
 }
 
+/** The whole job of hosting, in order. Ticks fill in as the auction moves along. */
+function HostGuide({ room, done }: { room: string; done: [boolean, boolean, boolean, boolean] }) {
+  const [lots, bidders, started, closed] = done;
+  const steps: [string, string, boolean][] = [
+    ["Set it up", "Name the event and add your lots in the sections below. Sample lots are already here so you can try it straight away.", lots],
+    ["Bring in bidders", "Open the stage on a big screen. Bidders scan its code and PayPal holds their amount. To try it alone, add a test bidder or the AI bidders below.", bidders],
+    ["Run each lot", "Press Start on a lot. Gus calls the bids, and the hammer falls by itself when bidding stops. Press Hammer to end a lot sooner.", started],
+    ["Close and settle", "Press Close auction. PayPal charges each winner what they won, releases every other hold, pays out the proceeds and sends receipts.", closed],
+  ];
+  const next = steps.findIndex((s) => !s[2]);
+  return (
+    <section aria-labelledby="guide-h" className={panel}>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <SectionTitle id="guide-h" hint="Four steps. The highlighted one is what to do next.">
+          How to host
+        </SectionTitle>
+        <p className="mb-4 flex flex-wrap gap-3">
+          <a href={withRoom("/stage", room)} target="_blank" rel="noreferrer" className={btn.secondary}>
+            Open the stage
+          </a>
+          <a href={withRoom("/paypal", room)} className={btn.secondary}>
+            PayPal page
+          </a>
+        </p>
+      </div>
+      <ol className="grid gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-2 lg:grid-cols-4">
+        {steps.map(([title, text, ok], i) => (
+          <li key={title} className={`bg-surface p-5 ${i === next ? "ring-2 ring-inset ring-clay/60" : ""}`}>
+            <p className="flex items-center justify-between">
+              <span className="num display text-xl text-clay-ink">{i + 1}</span>
+              <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${ok ? "bg-sage-soft text-sage" : i === next ? "bg-clay-soft text-clay-ink" : "bg-sunken text-muted"}`}>
+                {ok ? "Done" : i === next ? "Do this next" : "Later"}
+              </span>
+            </p>
+            <h3 className="display mt-2 text-xl text-ink">{title}</h3>
+            <p className="mt-2 text-sm leading-relaxed text-ink-2">{text}</p>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
 export default function AdminPage() {
   const room = useRoom();
   const { state, error, refresh } = useAuctionState(1000);
@@ -233,9 +277,9 @@ export default function AdminPage() {
   return (
     <main className="mx-auto w-full max-w-6xl 2xl:max-w-[88rem] flex-1 space-y-10 px-4 pb-24 pt-10 sm:px-6">
       <PageHeader
-        eyebrow={room ? `Control room · Room ${room.toUpperCase()}` : "Control room"}
-        title={state.event?.name ?? "Admin"}
-        lede="Run the floor: open and hammer lots, watch every hold, and settle when the night is done."
+        eyebrow={room ? `Host · Room ${room.toUpperCase()}` : "Host"}
+        title={state.event?.name ?? "Your auction"}
+        lede="Everything the organizer needs on one page: set up the auction, run each lot, then close it and let PayPal settle everyone."
         actions={
           <>
             <Pill value={state.status} />
@@ -243,6 +287,11 @@ export default function AdminPage() {
             <SandboxBadge />
           </>
         }
+      />
+
+      <HostGuide
+        room={room}
+        done={[state.lots.length > 0, state.paddles.length > 0, state.lots.some((l) => l.status !== "pending"), closed]}
       />
 
       <div className="flex flex-wrap items-center gap-3">

@@ -65,6 +65,8 @@ export type Lot = {
   quantity?: number;
   /** extra: retail listings (via Channel3) the FMV was estimated from. */
   sources?: { retailer: string; price: number; url: string }[];
+  /** extra: one sentence Gus says about the lot when it opens (written by the model, else the description). */
+  pitch?: string;
 };
 
 export type AuctionEventType =
@@ -112,7 +114,7 @@ export type State = {
   lots: Lot[];
   paddles: Paddle[];
   events: AuctionEvent[];
-  caption: { text: string; ts: number };
+  caption: { text: string; ts: number; /** which moment the line is for (bid, sold, pitch…); the stage cuts Gus off for bids */ kind?: string };
   ledger: LedgerRow[];
   totals: { held: number; captured: number; voided: number; paidOut: number };
   receipts: Receipt[];

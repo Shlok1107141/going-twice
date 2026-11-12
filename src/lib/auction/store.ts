@@ -102,7 +102,7 @@ function freshStore(o: NewAuctionOptions = {}): Store {
       lots,
       paddles: [],
       events: [],
-      caption: { text: `Welcome to ${(o.event ?? defaultEvent(type)).name}! Grab a paddle and get those thumbs warmed up.`, ts: Date.now() },
+      caption: { text: `Welcome to ${(o.event ?? defaultEvent(type)).name}. Raise a paddle to join.`, ts: Date.now() },
       ledger: [],
       totals: { held: 0, captured: 0, voided: 0, paidOut: 0 },
       receipts: [],
@@ -285,10 +285,10 @@ export function pushEvent(e: Omit<AuctionEvent, "id" | "ts">): AuctionEvent {
 }
 
 /** Caption ts is strictly increasing so the stage always notices a new line. */
-export function setCaption(text: string): number {
+export function setCaption(text: string, kind?: string): number {
   const s = getState();
   const ts = Math.max(Date.now(), s.caption.ts + 1);
-  s.caption = { text, ts };
+  s.caption = { text, ts, ...(kind ? { kind } : {}) };
   save();
   return ts;
 }

@@ -1,96 +1,145 @@
 # Going Twice
 
-**An AI auctioneer for school charity auctions where every bidder's paddle is a PayPal authorization hold.** Bidders approve once, tap to bid, and pay only what they win. The gavel is the checkout.
+**Going Twice turns any live auction into a one-tap checkout: every paddle is a PayPal authorization hold, an AI auctioneer runs the room, and the gavel settles everyone.**
 
-## Demo
-- Hosted app: https://going-twice.onrender.com (Render free tier; first load can take a moment to wake)
-- Video (under 3 min): https://youtu.be/u8RJl0X-BTE
-- Runs fully in the **PayPal sandbox**. No real money moves.
+Built for charity galas first, and also for estate and consignment sales, art and collectibles (with a buyer's premium) and farm auctions.
+
+- **Live app:** https://going-twice.onrender.com
+- **Video (under 3 minutes):** https://youtu.be/u8RJl0X-BTE
+- Everything runs in the **PayPal sandbox**. No real money moves.
+
+## Try it in two minutes
+
+No sign-in and no keys are needed on the live app.
+
+1. Open https://going-twice.onrender.com. The first load can take up to a minute while the free server wakes.
+2. Click **Watch the demo auction**, then **Start the auction, with sound**.
+3. Watch. Three AI bidders each get a real PayPal sandbox hold. Gus, the auctioneer, sells three lots out loud. It takes about four minutes and settles itself.
+4. When it ends, click **See every PayPal call for this auction**. The PayPal page lists each hold, capture, release, payout and receipt with the id PayPal returned.
+
+To bid against the AI bidders yourself, scan the code on the stage with your phone while the demo runs and add a paddle with the sandbox test card.
+
+## The three things in the app
+
+| | What it is | Where |
+|---|---|---|
+| 1 | **A demo auction** that runs by itself, so you can see the whole product without setting anything up | Home → *Watch the demo auction* |
+| 2 | **The PayPal page**: every PayPal request for one auction, live, then the final summary | *PayPal* in the top bar, or the link at the end of the demo |
+| 3 | **Host your own auction**: a private room with your event, your lots and real bidders on their phones | Home → *Host an auction* |
+
+Hosting has four steps, and the Host page shows which one is next:
+
+1. **Set it up.** Name the event, pick the auction type and add lots. You can photograph an item and let the app draft the lot.
+2. **Bring in bidders.** Put the stage on a big screen. Bidders scan its code, and PayPal holds the amount they choose. That hold is their paddle.
+3. **Run each lot.** Press Start. Gus calls the bids, and the hammer falls by itself when bidding stops.
+4. **Close and settle.** One button. PayPal charges each winner what they won, releases every other hold, pays out the proceeds and sends receipts.
 
 ## The problem
-School and PTA auctions run on paper bid sheets and a payment line at the end of the night. Winners leave early, bids get ghosted, cards fail the next day, and volunteers chase the money for weeks. The auction is the fun part; the checkout is where the money leaks.
 
-## How it works
-1. **Get a paddle.** A bidder picks a ceiling and approves one PayPal order with `intent=AUTHORIZE`. That hold is the paddle and the bidding limit.
-2. **Bid.** Bidders tap on their phone. Code validates every bid against the hold. The AI auctioneer "Gus" chants, reacts to bids and calls going once, going twice, sold.
-3. **Send an agent (optional).** An absentee bidder takes one sentence ("cabin weekend, up to $400"), bids live inside the parent's hold, and shows its reasoning on stage.
-4. **Close.** Each winner is captured once for what they won (less than the hold, `final_capture`). Every other hold is voided.
-5. **Settle.** Proceeds are paid to the PTA treasurer via Payouts, and each winner gets an AI-written donation receipt (a PayPal invoice marked paid in live mode).
+Live auctions still end with a payment line. Winners leave early, bids get ghosted, cards fail the next day, and volunteers or staff chase the money for weeks. The auction is the fun part. The checkout is where the money leaks.
+
+Going Twice moves the checkout to the start. A bidder approves one PayPal hold when they pick up a paddle, so every bid in the room is already backed by held funds, and closing the auction is a single button.
 
 ## How PayPal is used
-Plain REST, no SDK (`src/lib/paypal`). Sandbox only.
 
-| API | Call | Why |
+Plain REST against the sandbox, no SDK (`src/lib/paypal`).
+
+| API | Call | What it does here |
 |---|---|---|
-| Orders v2 | `POST /v2/checkout/orders` (`intent=AUTHORIZE`) and `/authorize` | The paddle: a hold that is also the bidder's ceiling |
-| Payments v2 | `POST /v2/payments/authorizations/{id}/capture` with `final_capture: true` | Charge a winner less than the hold; the remainder is released. Verified live: $20 captured against a $50 hold, COMPLETED |
-| Payments v2 | `POST /v2/payments/authorizations/{id}/void` | Release holds of bidders who won nothing. Verified live: VOIDED |
-| Payouts v1 | `POST /v1/payments/payouts` | Send captured proceeds to the PTA treasurer. Verified live: SUCCESS |
-| Invoicing v2 | create, send, record payment | Donation receipt as a paid invoice |
-| Webhooks | `POST /api/webhooks/paypal` (signature verified) | Confirm capture, void and payout events on the live board |
+| Orders v2 | `POST /v2/checkout/orders` with `intent=AUTHORIZE`, then `/authorize` | The paddle: a hold that is also the bidder's spending limit |
+| Payments v2 | `POST /v2/payments/authorizations/{id}/capture` with `final_capture: true` | Charges a winner exactly what they won, which is less than the hold; the rest is released |
+| Payments v2 | `POST /v2/payments/authorizations/{id}/void` | Releases the hold of every bidder who won nothing |
+| Payouts v1 | `POST /v1/payments/payouts` | Sends the proceeds to the organizer. For estate sales one batch splits each lot between its consignor and the house commission |
+| Invoicing v2 | create, send, record payment | The receipt: a PayPal invoice already marked paid |
+| Webhooks | `POST /api/webhooks/paypal`, signature verified | Confirms captures, voids and payouts |
 
-Idempotency keys are deterministic per action, so a retried close cannot double-charge.
+Details that matter for real money:
+
+- **Bids are checked in code against the hold.** A bidder can never win more than PayPal has authorized.
+- **Idempotency.** Every call carries a deterministic `PayPal-Request-Id`, so a retried close cannot charge twice. A `DUPLICATE_TRANSACTION` reply is resolved by looking up the capture that already exists.
+- **Failure handling.** Timeouts, retries with backoff, token refresh on 401, and typed errors. If the payout fails (for example, insufficient sandbox balance), the captures and releases still complete and the payout can be retried on its own.
 
 ## How AI is used
-- **Model:** Google **Gemini** (`gemini-2.5-flash`) via the Gemini API (free tier). If `ANTHROPIC_API_KEY` is set, the same roles run on Claude via the Anthropic API instead.
-- **Auctioneer "Gus":** a templated chant fills the gaps instantly; AI lines drop in on events (new bid, stall, sold). Spoken with the browser Web Speech API, always captioned.
-- **Absentee-bidder agent:** the AI decides whether a lot matches and whether to bid, with a visible reasoning line. Code computes the amount and validates it against the hold.
-- **Receipts:** the AI writes donation receipt text (fair-market-value wording).
 
-**AI proposes, code decides money.** The model never gates a bid, a capture, a void or a payout. Without any AI key, canned lines are used and everything still works.
+The model is Google **Gemini**, through the Gemini API. The rule throughout is **AI proposes, code decides money**: a model never sets an amount, and never gates a capture, a void or a payout.
 
-## Architecture
-Next.js 16 (App Router, TypeScript), in-memory state with SSE-style polling, REST to PayPal, hosted on Render. Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Internal API contract: [docs/API.md](docs/API.md).
+| Where | What the model does | What code does |
+|---|---|---|
+| **Gus, the auctioneer** | Writes one sentence per lot that sells it to the room (one call for the whole catalogue) | Builds every other line, decides pacing, and calls going once, going twice, sold |
+| **Absentee bidding agent** | Reads a bidder's one-sentence instruction ("the cabin weekend, up to $400") and judges whether a lot matches | Computes the bid, and enforces the bidder's limit and hold |
+| **AI bidders in the demo** | Decide in character whether to raise | Pick the amount, the timing and the limits |
+| **Snap a lot** | Reads a photo of an item and drafts the title and description | Looks up retail listings through Channel3 and derives the estimated value |
+| **Receipts** | Writes the receipt text | Supplies every number |
+| **Report assistant** | Answers questions about the settled auction in the report | Runs the queries on the auction's own data |
 
-## Quick start for judges
+Without a Gemini key the app still works: each lot's own description is used as Gus's sentence, and the agent falls back to keyword matching.
 
-### (a) Demo mode, no keys
+### Gus's voice
+
+Gus speaks with **Kokoro-82M**, an open-source text-to-speech model (Apache-2.0, https://github.com/hexgrad/kokoro). There is one voice and no paid speech API.
+
+- Lines known in advance (the fixed calls, money amounts, the sample catalogues) are rendered with Kokoro ahead of time into `public/gus/clips`, so a bid is answered within half a second. `scripts/gus-clips.mjs` and `scripts/gus-clips.py` regenerate them.
+- Anything else (a custom lot, a bidder's name, the sentence Gemini wrote) is rendered by the same Kokoro voice in the browser, in a web worker (`public/gus/worker.js`, using kokoro-js). The stage prepares these before they are needed.
+- When a bid arrives, Gus stops whatever he was saying and answers the bid.
+
+## Sponsor tools
+
+| Tool | Where it is used |
+|---|---|
+| **AG Grid / AG Studio** | `/report`: the settlement report, with custom widgets and an assistant that answers questions about the auction |
+| **Bryntum Scheduler** | `/timeline`: each paddle's hold on a timeline, from authorization to capture or release |
+| **Channel3** | Snap a lot: retail listings for a photographed item, used to estimate its fair market value |
+| **Render** | Hosting (`render.yaml`). A Render Workflows settlement is implemented in `workflows/` and is off by default; see `docs/WORKFLOWS.md` |
+| **APIMatic** | Its PayPal skills guided the REST client's timeouts, retries and typed errors; notes in `docs/APIMATIC.md` |
+| **Postman** | `docs/postman`: a collection that runs the whole flow against a server (58 assertions) |
+
+AG Studio and Bryntum run on trial licences.
+
+## Run it locally
+
 ```bash
 npm install
 npm run dev
 ```
-Open http://localhost:3000, then:
-- `/stage` the big-screen auction (click to enable sound)
-- `/paddle` register a paddle or an absentee agent
-- `/admin` control room: money board and close
 
-With no PayPal keys, holds, captures, voids, payouts and receipts are simulated with `DEMO-...` ids. The full flow is playable.
+Open http://localhost:3000.
 
-### (b) Real PayPal sandbox mode
-```bash
-cp .env.example .env.local   # fill in values, then npm run dev
-```
+With no keys at all the app runs in **demo mode**: holds, captures, releases, payouts and receipts are simulated with `DEMO-…` ids, and the whole flow is playable.
+
+For real sandbox calls, copy `.env.example` to `.env.local` and fill it in:
 
 | Variable | Purpose |
 |---|---|
-| `PAYPAL_ENV` | `sandbox` (default) |
-| `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET` | Sandbox REST app (server only). Setting the client id turns demo mode off |
-| `NEXT_PUBLIC_PAYPAL_CLIENT_ID` | Same client id, for the browser |
-| `PAYPAL_WEBHOOK_ID` | Webhook registered for `<APP_BASE_URL>/api/webhooks/paypal` |
+| `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `NEXT_PUBLIC_PAYPAL_CLIENT_ID` | A PayPal sandbox REST app |
+| `PAYPAL_WEBHOOK_ID` | Optional: verifies webhook signatures |
 | `TREASURER_PAYPAL_EMAIL` | Sandbox account that receives the payout |
-| `GEMINI_API_KEY` | Gemini key from aistudio.google.com/apikey (optional; `GEMINI_MODEL` overrides the model) |
-| `ANTHROPIC_API_KEY` | Optional; use Claude instead (`ANTHROPIC_MODEL` overrides the model) |
-| `APP_BASE_URL` | Public URL, e.g. `http://localhost:3000` |
-| `DEMO_MODE=1` | Force demo mode even with keys set |
+| `SANDBOX_BUYER_EMAILS` | Sandbox buyer emails (no passwords) for test-card receipts and default consignors |
+| `GEMINI_API_KEY`, `GEMINI_API_KEYS` | Gemini key, plus optional extra keys that are rotated when one is rate limited |
+| `APP_BASE_URL` | The app's own URL |
 
-Sandbox test accounts (buyers, treasurer): not required. Use the "Use sandbox test card" option on /paddle to create real sandbox holds with no login (buyer logins for the PayPal popup are provided to judges in the Devpost testing notes).
+## Tests
 
-## Testing walkthrough (about 4 minutes)
-1. Open `/stage` on a laptop and click to start sound.
-2. In another window open `/paddle`. Create a paddle (sandbox test-card option creates a real sandbox hold without logging in, or approve with a sandbox buyer). Make a second paddle.
-3. Optional: create an absentee agent with a sentence like "cabin weekend, up to $400".
-4. Start a lot in `/admin` or on stage. Bid from the paddle windows; Gus reacts and the agent bids with its reasoning shown.
-5. Let it go once, twice, sold. Repeat for another lot.
-6. Click Close in `/admin`. Expect one capture per winner (less than the hold), voids for the rest, a payout to the treasurer, and a receipt per winner.
-7. Check the PayPal sandbox dashboard (Activity) to confirm.
+Each script takes the server URL, so the same checks run locally and against the live app.
 
-## Sponsor tools
-- **PayPal:** Orders, Payments (authorize, capture, void), Payouts, Invoicing, Webhooks; PayPal AI Toolkit plugin and REST docs.
-- **APIMatic:** Context Plugin for PayPal [VERIFY-if-used].
-- **Render:** hosting.
+```bash
+node --env-file=.env.local scripts/live-flow.mjs http://localhost:3000       # full charity flow with real sandbox calls
+node --env-file=.env.local scripts/autopilot-flow.mjs http://localhost:3000  # the demo auction
+node scripts/break-tests.mjs http://localhost:3000                           # failure cases
+```
 
-## Built with Claude Code, multi-agent
-Built with Claude Code using Claude Fable, Opus and Sonnet as parallel agents (engine, PayPal library, UI, AI layer, docs), coordinated against a shared API contract ([docs/API.md](docs/API.md)).
+`AUCTION_TYPE=estate` (or `collectibles`, `farm`) runs `live-flow.mjs` for another auction type. The Postman collection is described in `docs/POSTMAN.md`, and the failure cases in `docs/BREAK-TESTS.md`.
+
+## Architecture
+
+Next.js 16 (App Router, TypeScript, Tailwind), REST to PayPal, hosted on Render. Each auction is a room with its own state; pages poll `/api/state`. More in `docs/ARCHITECTURE.md` and `docs/API.md`.
+
+## Limits
+
+- Sandbox only. Rooms live in the server's memory, so a redeploy clears them.
+- Estimated values on charity receipts are estimates from retail listings, not tax advice.
+- The free Render instance sleeps when idle, so the first request can take up to a minute.
+- Gus's voice for custom text needs a one-time download of about 90 MB in the browser. Pre-rendered lines play without it.
 
 ## License
-MIT. See [LICENSE](LICENSE).
+
+MIT. See `LICENSE`.

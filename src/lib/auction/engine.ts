@@ -167,14 +167,14 @@ export function setAuctionType(input: TypeInput): State {
   releaseHolds(getState());
   const s = resetStore({ type, settings, organizerEmail, consignorEmails });
   if (type !== "charity") {
-    setCaption(`Welcome to ${s.event.name}! Grab a paddle and get those thumbs warmed up.`);
+    setCaption(`Welcome to ${s.event.name}. Raise a paddle to join.`);
   }
   return s;
 }
 
 /** Lot facts Gus may weave into a line (consignor provenance, per-head quotes). */
 function lotCtx(lot: Lot) {
-  return { consignor: lot.consignor, unit: lot.unit, quantity: lot.quantity };
+  return { consignor: lot.consignor, unit: lot.unit, quantity: lot.quantity, lotNo: getState().lots.indexOf(lot) + 1, description: lot.description, pitch: lot.pitch };
 }
 
 // Sandbox receipts: test-card paddles have no PayPal payer, so default to the next sandbox buyer
@@ -360,11 +360,7 @@ export function addLot(draft: LotDraft): Lot {
   };
   s.lots.push(lot);
   pushEvent({ type: "system", text: `New lot added: ${lot.title}, opening at ${money(lot.startPrice)}.`, lotId: lot.id });
-  setCaption(
-    s.auctionType === "charity"
-      ? `Fresh off the donation table: ${lot.title}! Estimated at ${money(lot.fmv)}, opening at ${money(lot.startPrice)}.`
-      : `New lot just in: ${lot.title}, opening at ${money(lot.startPrice)}.`,
-  );
+  setCaption(`A new lot: ${lot.title}. Opening at ${money(lot.startPrice)}.`);
   save();
   return lot;
 }
@@ -406,6 +402,7 @@ export function placeBid(paddleId: string, lotId: string, amountIn: number, sour
   }
 
   // Commit: release the previous high bidder's exposure, take ours.
+  const first = !lot.highPaddleId;
   if (lot.highPaddleId) {
     const prev = s.paddles.find((x) => x.id === lot.highPaddleId);
     if (prev) prev.committed = dollars(Math.max(0, cents(prev.committed) - cents(lot.highBid)));
@@ -428,11 +425,14 @@ export function placeBid(paddleId: string, lotId: string, amountIn: number, sour
     paddleId: p.id,
     lotId: lot.id,
   });
-  say(isAgent ? "agent-bid" : "bid", { lot: lot.title, name: p.name, amount, next, ...lotCtx(lot) });
+  say(isAgent && p.agent?.lotId !== "__autopilot__" ? "agent-bid" : "bid", { lot: lot.title, name: p.name, amount, next, first, ...lotCtx(lot) });
   save();
   if (!isAgent) triggerAgents(lot.id);
   return { ok: true };
 }
+
+/** Seconds of quiet (since the last bid) before each step. Unhurried on purpose: Gus needs room to speak. */
+const PACE = { stall: 9, once: 15, twice: 20, sold: 25, intro: 8 };
 
 /** Called by the stage every ~2 s. Advances at most one phase step per call. */
 export function tick(): void {
@@ -441,24 +441,25 @@ export function tick(): void {
   const lot = s.lots.find((l) => l.id === s.currentLotId);
   if (!lot || lot.status !== "open") return;
   const i = getInternal();
-  const elapsed = ((Date.now() - i.lastActivityAt) / 1000) * tickSpeed();
+  // A lot nobody has bid on yet gets extra time: Gus is still introducing it.
+  const elapsed = ((Date.now() - i.lastActivityAt) / 1000) * tickSpeed() - (lot.highPaddleId ? 0 : PACE.intro);
   const ctx = { lot: lot.title, amount: lot.highPaddleId ? lot.highBid : lot.startPrice };
 
   if (lot.phase === "bidding") {
-    if (elapsed >= 14) {
+    if (elapsed >= PACE.once) {
       lot.phase = "going-once";
       pushEvent({ type: "going-once", text: `${lot.title}: going once at ${money(ctx.amount)}.`, lotId: lot.id });
       say("going-once", { ...ctx, ...lotCtx(lot) });
-    } else if (elapsed >= 8 && !i.stalled) {
+    } else if (elapsed >= PACE.stall && !i.stalled) {
       i.stalled = true;
       pushEvent({ type: "stall", text: `${lot.title} is waiting on a bid at ${money(ctx.amount)}.`, lotId: lot.id });
       say("stall", { ...ctx, ...lotCtx(lot) });
     }
-  } else if (lot.phase === "going-once" && elapsed >= 18) {
+  } else if (lot.phase === "going-once" && elapsed >= PACE.twice) {
     lot.phase = "going-twice";
     pushEvent({ type: "going-twice", text: `${lot.title}: going twice at ${money(ctx.amount)}.`, lotId: lot.id });
     say("going-twice", { ...ctx, ...lotCtx(lot) });
-  } else if (lot.phase === "going-twice" && elapsed >= 22) {
+  } else if (lot.phase === "going-twice" && elapsed >= PACE.sold) {
     hammerLot(lot);
   }
   save();

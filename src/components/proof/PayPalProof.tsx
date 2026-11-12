@@ -26,7 +26,7 @@ function shortId(id: string): string {
   return id.length > 14 ? `${id.slice(0, 6)}…${id.slice(-5)}` : id;
 }
 
-function CopyId({ id }: { id: string }) {
+export function CopyId({ id }: { id: string }) {
   const [done, setDone] = useState(false);
   async function copy() {
     try {

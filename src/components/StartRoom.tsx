@@ -27,10 +27,9 @@ export function StartRoom() {
   return (
     <div>
       <button type="button" onClick={start} disabled={busy} className={`${btn.primary} px-6 py-3.5 text-base`}>
-        {busy ? "Creating your room…" : "Start your own room"}
+        {busy ? "Creating your room…" : "Host an auction"}
         {!busy && <span aria-hidden>&rarr;</span>}
       </button>
-      <p className="mt-3 text-sm text-muted">A private auction of your own. Nobody else&apos;s bids or resets can touch it.</p>
       {error && (
         <p role="alert" className="mt-2 text-sm font-medium text-danger">
           {error}

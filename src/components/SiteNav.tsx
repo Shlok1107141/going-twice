@@ -20,9 +20,10 @@ export function withRoom(href: string, room: string): string {
 }
 
 export const PAGES = [
-  { href: "/stage", label: "Stage" },
-  { href: "/paddle", label: "Paddle" },
-  { href: "/admin", label: "Admin" },
+  { href: "/stage", label: "Auction" },
+  { href: "/paddle", label: "Bid" },
+  { href: "/admin", label: "Host" },
+  { href: "/paypal", label: "PayPal" },
   { href: "/report", label: "Report" },
   { href: "/timeline", label: "Timeline" },
 ] as const;

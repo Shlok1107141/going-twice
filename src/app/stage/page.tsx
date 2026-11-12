@@ -1,17 +1,18 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { NightInNumbersOverlay } from "@/components/proof/NightInNumbers";
 import { QrCode } from "@/components/QrCode";
 import { SandboxBadge } from "@/components/SandboxBadge";
 import { Wordmark } from "@/components/SiteNav";
+import { FORMS } from "@/lib/ai/gusLines";
 import { typeConfig } from "@/lib/auction/auctionTypes";
 import { post } from "@/lib/client/api";
 import { clock, findPaddle, headroom, money, stageLot } from "@/lib/client/format";
 import type { AuctionEvent, Lot, Paddle, State } from "@/lib/client/types";
 import { useAuctionState } from "@/lib/client/useAuctionState";
 import { useOrigin } from "@/lib/client/useOrigin";
-import { useSpeech } from "@/lib/client/useSpeech";
+import { prewarm, useSpeech } from "@/lib/client/useSpeech";
 
 const PERSONA = "Gus";
 const PHASES = ["Bidding", "Going once", "Going twice", "Sold"] as const;
@@ -42,6 +43,14 @@ const eventTone: Record<AuctionEvent["type"], string> = {
   sold: "text-[#a9cdb3]",
   system: "text-[var(--t-muted)]",
 };
+
+/** One plain sentence about what PayPal is doing right now. */
+function moneyLine(state: State, settling: boolean): string {
+  if (state.status === "closed") return "Settled. Winners were charged what they won, every other hold was released, and the proceeds were paid out.";
+  if (settling) return "Closing now: capturing each winner's total, releasing every other hold, paying out the proceeds.";
+  if (state.status === "live") return "Every bid is checked against that bidder's PayPal hold. No money moves until the auction closes.";
+  return state.paddles.length ? "Each paddle is a PayPal authorization hold. Nothing has been charged." : "Each bidder joins by letting PayPal hold an amount. Nothing is charged until they win.";
+}
 
 const eyebrowDark = "eyebrow text-[var(--t-muted)] text-[clamp(0.7rem,0.75vw,0.95rem)]";
 
@@ -97,12 +106,72 @@ function RosterRow({ p, leading }: { p: Paddle; leading: boolean }) {
 }
 
 export default function StagePage() {
-  const { state, error } = useAuctionState(800);
+  const { state, error } = useAuctionState(500);
   const origin = useOrigin();
   const room = typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("room");
   const joinUrl = origin ? `${origin}/paddle${room ? `?room=${encodeURIComponent(room)}` : ""}` : "";
   const speech = useSpeech(state?.caption);
   const live = state?.status === "live";
+  const demo = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") === "1";
+  const roomQ = room ? `?room=${encodeURIComponent(room)}` : "";
+  const [demoPhase, setDemoPhase] = useState<"intro" | "starting" | "running">("intro");
+  const [demoError, setDemoError] = useState<string | null>(null);
+  const [auto, setAuto] = useState<{ phase: string; running: boolean } | null>(null);
+
+  // One model call writes a sentence per lot for Gus; ask for it whenever a waiting lot has none.
+  const needPitch = state?.lots.filter((l) => l.status === "pending" && !l.pitch).map((l) => l.id).join(",") ?? "";
+  useEffect(() => {
+    if (needPitch) post("/api/gus/prepare").catch(() => {});
+  }, [needPitch]);
+
+  // Voice ahead of time what Gus will need next: the coming lots and every bidder's name.
+  const warmKey = state
+    ? [...state.lots.filter((l) => l.status === "pending" || l.status === "open").slice(0, 3).map((l) => `${l.title}|${l.pitch ?? ""}|${l.consignor ?? ""}`), ...state.paddles.map((p) => p.name)].join("~")
+    : "";
+  useEffect(() => {
+    if (!state || !warmKey) return;
+    const texts: string[] = [];
+    for (const l of state.lots.filter((x) => x.status === "pending" || x.status === "open").slice(0, 3)) {
+      texts.push(FORMS.title(l.title));
+      if (l.pitch) texts.push(l.pitch);
+      if (l.consignor) texts.push(FORMS.from(l.consignor));
+    }
+    for (const p of state.paddles.slice(0, 12)) texts.push(FORMS.name(p.name), FORMS.thanks(p.name), FORMS.soldTo(p.name));
+    prewarm(texts);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- warmKey captures everything read from state here
+  }, [warmKey]);
+
+  // While a demo runs, follow autopilot so the stage can say when it is settling.
+  useEffect(() => {
+    if (!demo) return;
+    let stop = false;
+    const load = () =>
+      fetch(`/api/autopilot${roomQ}`, { cache: "no-store" })
+        .then((r) => r.json())
+        .then((j: { phase: string; running: boolean }) => {
+          if (!stop) setAuto(j);
+        })
+        .catch(() => {});
+    load();
+    const id = setInterval(load, 2000);
+    return () => {
+      stop = true;
+      clearInterval(id);
+    };
+  }, [demo, roomQ]);
+
+  async function startDemo() {
+    speech.start();
+    setDemoError(null);
+    setDemoPhase("starting");
+    try {
+      await post("/api/autopilot", { action: "start", autoClose: true });
+      setDemoPhase("running");
+    } catch (e) {
+      setDemoError(e instanceof Error ? e.message : "The demo could not start.");
+      setDemoPhase("intro");
+    }
+  }
 
   useEffect(() => {
     if (!live) return;
@@ -141,6 +210,9 @@ export default function StagePage() {
     ["Paid out", t.paidOut],
   ] as const;
   const premium = state.settings?.premiumPct ?? 0;
+  const settling = auto?.phase === "closing";
+  const demoStarted = demoPhase === "running" || !!auto?.running || state.status !== "lobby" || state.paddles.length > 0;
+  const showIntro = demo && !demoStarted;
 
   return (
     <main className="theatre grid min-h-screen grid-rows-[auto_minmax(0,1fr)_auto] gap-[1.4vw] px-[2.2vw] py-[1.6vw] lg:h-screen lg:overflow-hidden">
@@ -169,14 +241,24 @@ export default function StagePage() {
                 aria-pressed={speech.muted}
                 className="rounded-md border border-[var(--t-line)] px-4 py-1.5 text-sm text-[var(--t-text)] transition-colors hover:border-[var(--t-muted)]"
               >
-                {speech.muted ? "Unmute Gus" : "Mute"}
+                {speech.muted ? "Unmute Gus" : "Mute Gus"}
               </button>
             ) : (
               <button type="button" onClick={speech.start} className="rounded-md bg-canvas px-4 py-1.5 text-sm font-medium text-ink transition-colors hover:bg-white">
-                Start sound
+                Turn on Gus&apos;s voice
               </button>
             ))}
+          <a href={`/paypal${roomQ}`} className="rounded-md border border-[var(--t-line)] px-4 py-1.5 text-sm text-[var(--t-text)] transition-colors hover:border-[var(--t-muted)]">
+            PayPal page
+          </a>
+          <a href={`/${roomQ}`} className="rounded-md px-2 py-1.5 text-sm text-[var(--t-muted)] transition-colors hover:text-[var(--t-text)]">
+            Exit
+          </a>
         </div>
+        <p role="status" className="w-full text-[clamp(0.8rem,0.95vw,1.2rem)] text-[var(--t-muted)]">
+          <span className="mr-2 text-clay-on-dark">PayPal</span>
+          {moneyLine(state, settling)}
+        </p>
       </header>
 
       <div className="grid min-h-0 grid-cols-1 gap-[2vw] lg:grid-cols-[minmax(0,1.85fr)_minmax(0,1fr)]">
@@ -363,7 +445,47 @@ export default function StagePage() {
           ))}
         </section>
       </div>
-      <NightInNumbersOverlay state={state} />
+      <NightInNumbersOverlay state={state} href={`/paypal${roomQ}`} />
+      {showIntro && (
+        <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-[var(--t-bg)]/90 p-4 backdrop-blur-sm">
+          <div role="dialog" aria-modal="true" aria-labelledby="demo-h" className="w-full max-w-2xl rounded-2xl border border-[var(--t-line)] bg-[var(--t-panel)] p-6 sm:p-10">
+            <p className={eyebrowDark}>Demo auction · about 4 minutes</p>
+            <h2 id="demo-h" className="display mt-3 text-4xl text-[var(--t-text)] sm:text-5xl">
+              Watch a full auction, start to settled.
+            </h2>
+            <ol className="mt-6 space-y-3 text-[15px] leading-relaxed text-[var(--t-muted)] sm:text-base">
+              <li>
+                <span className="num mr-2 text-clay-on-dark">1</span>Three AI bidders each get a paddle. A paddle is a real PayPal sandbox authorization hold.
+              </li>
+              <li>
+                <span className="num mr-2 text-clay-on-dark">2</span>Gus, the auctioneer, sells three lots. Every bid is checked against the bidder&apos;s hold.
+              </li>
+              <li>
+                <span className="num mr-2 text-clay-on-dark">3</span>At the end PayPal captures each winner&apos;s total, releases the other holds, pays out the proceeds and sends receipts.
+              </li>
+            </ol>
+            <p className="mt-5 text-sm text-[var(--t-muted)]">Want to bid against them? Scan the code on the stage with your phone once it starts.</p>
+            {demoError && (
+              <p role="alert" className="mt-4 text-sm font-medium text-clay-on-dark">
+                {demoError}
+              </p>
+            )}
+            <div className="mt-7 flex flex-wrap items-center gap-4">
+              <button
+                type="button"
+                onClick={startDemo}
+                disabled={demoPhase === "starting"}
+                className="rounded-md bg-canvas px-6 py-3 text-base font-medium text-ink transition-colors hover:bg-white disabled:opacity-60"
+              >
+                {demoPhase === "starting" ? "Placing the PayPal holds…" : "Start the auction, with sound"}
+              </button>
+              <a href="/" className="text-sm text-[var(--t-muted)] underline underline-offset-4 hover:text-[var(--t-text)]">
+                Back
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

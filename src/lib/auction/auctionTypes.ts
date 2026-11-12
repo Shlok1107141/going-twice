@@ -22,9 +22,6 @@ export type GusHints = {
   persona: string;
   /** Vocabulary hints for Claude. */
   vocabulary: string;
-  /** Extra template lines per event; they replace the charity lines for that event.
-   *  Placeholders: {lot} {name} {amount} {next} {consignor} {each} */
-  lines: Partial<Record<"open" | "bid" | "going-once" | "going-twice" | "sold" | "close" | "stall", string[]>>;
 };
 
 export type AuctionTypeConfig = {
@@ -80,9 +77,8 @@ export const AUCTION_TYPES: Record<AuctionType, AuctionTypeConfig> = {
     editable: { premium: false, commission: false, consignors: false },
     keyNumbers: ["No premium", "Donation receipts + FMV", "100% to the cause"],
     gus: {
-      persona: "the warm, funny, slightly over-caffeinated volunteer auctioneer at a charity gala",
-      vocabulary: "gala, fundraiser, donated item, silent table, raffle",
-      lines: {},
+      persona: "a warm, unhurried charity auctioneer with an easy, reassuring manner",
+      vocabulary: "gala, fundraiser, donated item, silent table, raffle",
     },
     lots: [
       { id: "lot-principal", title: "Principal for a Day", emoji: "\u{1F393}", description: "Your child runs morning announcements, picks the lunch dessert, and gets the big chair.", startPrice: 50, increment: 10, fmv: 0 },
@@ -109,21 +105,6 @@ export const AUCTION_TYPES: Record<AuctionType, AuctionTypeConfig> = {
     gus: {
       persona: "a seasoned, dry-witted estate auctioneer who respects provenance and loves a good story about where things came from",
       vocabulary: "estate, consignor, provenance, lot, hammer price, circa, patina, from the collection of",
-      lines: {
-        open: [
-          "Lot up next, from {consignor}: {lot}. Starting at {amount}. Let's see some paddles.",
-          "From {consignor}, we have {lot}. Who'll open me at {amount}?",
-        ],
-        bid: [
-          "{amount} from {name}, for the piece from {consignor}. Do I hear {next}?",
-          "{name} at {amount}. Fine taste, and it has the patina to prove it.",
-        ],
-        sold: [
-          "Sold! {lot}, from {consignor}, to {name} for {amount}. The consignor will be paid out at close.",
-          "Hammer's down at {amount}. {name} takes {lot}, and {consignor} will be pleased.",
-        ],
-        close: ["That concludes the sale. Winners are charged the hammer price, holds are released, and the consignors are paid out with the house commission split. Thank you all."],
-      },
     },
     lots: [
       { id: "lot-sideboard", title: "Walnut Mid-Century Sideboard", emoji: "\u{1FA91}", description: "Circa 1962 walnut sideboard, sliding doors, original brass pulls. Light wear.", startPrice: 150, increment: 25, consignor: "the Hendricks estate" },
@@ -150,21 +131,6 @@ export const AUCTION_TYPES: Record<AuctionType, AuctionTypeConfig> = {
     gus: {
       persona: "a polished gallery auctioneer with a gentle sense of theater, who always reminds the room the buyer's premium is added to the hammer price",
       vocabulary: "hammer price, plus buyer's premium, provenance, edition, signed, condition report, lot",
-      lines: {
-        open: [
-          "Lot up now: {lot}. Opening at {amount}, plus buyer's premium. Who'll start me?",
-          "Presenting {lot}. We open at {amount}, plus buyer's premium.",
-        ],
-        bid: [
-          "{amount} from {name}, plus buyer's premium. Do I hear {next}?",
-          "{name} at {amount}. A discerning eye, and the premium is added at the hammer.",
-        ],
-        sold: [
-          "Sold! {lot} to {name} at a hammer price of {amount}, plus buyer's premium.",
-          "Hammer down at {amount} plus premium. {name}, congratulations on a fine acquisition.",
-        ],
-        close: ["The sale is concluded. Winners are charged hammer plus buyer's premium, every other hold is released. Thank you."],
-      },
     },
     lots: [
       { id: "lot-print", title: "Signed Screenprint, Edition 12/50", emoji: "\u{1F5BC}\u{FE0F}", description: "Abstract screenprint in four colors, signed and numbered in pencil, framed.", startPrice: 200, increment: 25 },
@@ -191,21 +157,6 @@ export const AUCTION_TYPES: Record<AuctionType, AuctionTypeConfig> = {
     gus: {
       persona: "a fast-talking, friendly livestock-sale auctioneer with a country drawl who talks in per-head and per-lot terms",
       vocabulary: "per head, per lot, pen, head, heifers, bred cows, round bales, hammer, sold on the dollar",
-      lines: {
-        open: [
-          "Next in the ring: {lot}. Start me at {amount}, I'm looking for a bid{each}.",
-          "Here's {lot}. Who'll give me {amount}?",
-        ],
-        bid: [
-          "{amount} from {name}{each}! Now {next}, now {next}, who'll give it?",
-          "I have {amount}{each}, {name} is in. Do I hear {next}?",
-        ],
-        sold: [
-          "Sold! {lot} to {name} at {amount}{each}.",
-          "Sold on the dollar, {amount}{each}. {name}, she's yours.",
-        ],
-        close: ["That's the sale, folks. Buyers are charged what they won, the rest of the holds are released, and the seller is paid. Thanks for coming."],
-      },
     },
     lots: [
       { id: "lot-heifers", title: "Pen of 6 Angus Heifers", emoji: "\u{1F404}", description: "Bred Angus heifers, vaccinated, due in the spring. One bid for the pen of six head.", startPrice: 3600, increment: 100, unit: "head", quantity: 6 },
