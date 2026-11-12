@@ -6,17 +6,16 @@ import { EventPanel } from "@/components/admin/EventPanel";
 import { LotsEditor } from "@/components/admin/LotsEditor";
 import { AutopilotPanel } from "@/components/admin/AutopilotPanel";
 import { SnapLot } from "@/components/admin/SnapLot";
+import { NightInNumbers } from "@/components/proof/NightInNumbers";
+import { PayPalProof } from "@/components/proof/PayPalProof";
 import { SandboxBadge } from "@/components/SandboxBadge";
 import { useRoom, withRoom } from "@/components/SiteNav";
 import { btn, PageHeader, panel, Pill, SectionTitle } from "@/components/ui";
 import { post } from "@/lib/client/api";
-import { clock, findPaddle, headroom, money } from "@/lib/client/format";
+import { findPaddle, headroom, money } from "@/lib/client/format";
 import type { LedgerRow, Lot, Paddle } from "@/lib/client/types";
 import { useAuctionState } from "@/lib/client/useAuctionState";
 import { useOrigin } from "@/lib/client/useOrigin";
-
-const th = "px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted first:pl-0";
-const td = "px-3 py-3 align-top first:pl-0";
 
 function ConfirmButton({
   label,
@@ -272,6 +271,8 @@ export default function AdminPage() {
         ))}
       </section>
 
+      {closed && <NightInNumbers state={state} className="rounded-xl border border-line bg-surface p-6 shadow-soft" />}
+
       <div className="grid gap-6 lg:grid-cols-[1.1fr_1fr]">
         <section className={panel} aria-labelledby="lots-h">
           <SectionTitle id="lots-h" hint={openLot ? "One lot runs at a time. Hammer it to open the next." : "Start a lot to put it on the stage."}>
@@ -378,43 +379,10 @@ export default function AdminPage() {
       <RoomLinks room={room} />
 
       <section className={panel} aria-labelledby="led-h">
-        <SectionTitle id="led-h" hint="Every PayPal call, newest first.">
-          Ledger
+        <SectionTitle id="led-h" hint="Every PayPal call, newest first. Sandbox ids.">
+          PayPal proof
         </SectionTitle>
-        {ledger.length === 0 ? (
-          <p className="text-muted">No money has moved yet.</p>
-        ) : (
-          <div className="-mx-6 overflow-x-auto px-6">
-            <table className="w-full min-w-[720px] text-sm">
-              <thead className="border-b border-line">
-                <tr>
-                  <th className={th}>Time</th>
-                  <th className={th}>Kind</th>
-                  <th className={th}>Paddle</th>
-                  <th className={`${th} text-right`}>Amount</th>
-                  <th className={th}>PayPal id</th>
-                  <th className={th}>Status</th>
-                  <th className={th}>Note</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line">
-                {ledger.map((r) => (
-                  <tr key={r.id}>
-                    <td className={`${td} num whitespace-nowrap text-muted`}>{clock(r.ts)}</td>
-                    <td className={`${td} capitalize text-ink`}>{r.kind}</td>
-                    <td className={`${td} text-ink-2`}>{paddleName(r.paddleId)}</td>
-                    <td className={`${td} num text-right text-ink`}>{money(r.amount)}</td>
-                    <td className={`${td} break-all font-mono text-xs text-muted`}>{r.paypalId ?? "—"}</td>
-                    <td className={td}>
-                      <Pill value={r.status} />
-                    </td>
-                    <td className={`${td} text-muted`}>{r.note ?? ""}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <PayPalProof state={state} />
       </section>
 
       <section className={panel} aria-labelledby="rec-h">

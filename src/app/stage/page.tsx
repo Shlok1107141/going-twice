@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { NightInNumbersOverlay } from "@/components/proof/NightInNumbers";
 import { QrCode } from "@/components/QrCode";
 import { SandboxBadge } from "@/components/SandboxBadge";
 import { Wordmark } from "@/components/SiteNav";
@@ -362,6 +363,7 @@ export default function StagePage() {
           ))}
         </section>
       </div>
+      <NightInNumbersOverlay state={state} />
     </main>
   );
 }
