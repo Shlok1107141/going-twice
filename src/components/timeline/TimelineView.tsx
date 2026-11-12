@@ -32,6 +32,7 @@ export default function TimelineView() {
   const [error, setError] = useState<string | null>(null);
   const [zoom, setZoom] = useState<Zoom>("tonight");
   const [now, setNow] = useState(() => Date.now());
+  const [follow, setFollow] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [room] = useState(() => roomParam());
@@ -96,6 +97,14 @@ export default function TimelineView() {
     }
     fitted.current = zoom;
   }, [zoom, model, now]);
+
+  // Follow live: keep "now" in view while an auction runs.
+  useEffect(() => {
+    const s = schedRef.current?.instance;
+    if (!follow || !s) return;
+    const c = state?.status === "live" ? now : Date.now();
+    s.scrollToDate(new Date(c), { block: "center", animate: true });
+  }, [follow, now, state?.status]);
 
   const onZoom = (z: Zoom) => {
     fitted.current = null;
@@ -188,6 +197,9 @@ export default function TimelineView() {
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <span className="rounded-full border border-line bg-surface px-3 py-1 font-mono text-xs text-ink-2">Room {roomLabel}</span>
+          <button onClick={() => setFollow((f) => !f)} aria-pressed={follow} className={`rounded-md border px-3.5 py-1.5 text-sm transition-colors ${follow ? "border-ink bg-ink text-canvas" : "border-line bg-surface text-ink-2 hover:bg-sunken"}`}>
+            <span className={`mr-2 inline-block h-2 w-2 rounded-full ${follow ? "bg-clay" : "bg-line-strong"}`} aria-hidden />Follow live
+          </button>
           <div role="group" aria-label="Zoom" className="inline-flex rounded-md border border-line bg-surface p-1 text-sm">
             {([["tonight", "Tonight (minutes)"], ["lifetime", "Hold lifetime (days)"]] as const).map(([z, label]) => (
               <button key={z} onClick={() => onZoom(z)} aria-pressed={zoom === z} className={`rounded-sm px-3.5 py-1.5 transition-colors ${zoom === z ? "bg-ink text-canvas" : "text-ink-2 hover:bg-sunken"}`}>
@@ -226,8 +238,10 @@ export default function TimelineView() {
               <span><i className="tl-sw tl-sw-bid" />Bid</span>
               <span><i className="tl-sw tl-sw-capture" />Captured</span>
               <span><i className="tl-sw tl-sw-void" />Voided</span>
-              <span><i className="tl-sw tl-sw-lot" />Lot</span>
+              <span><i className="tl-sw tl-sw-lot" />Lot run-of-show</span>
+              <span className="ml-auto text-muted">Hover any bar for PayPal ids and amounts</span>
             </div>
+            <p className="border-b border-line bg-canvas px-5 pb-3 text-xs text-muted">Each bar is a PayPal authorization; PayPal events and AI bidders move it.</p>
             <div className="tl-host">
               <BryntumScheduler ref={schedRef as never} {...schedulerProps} startDate={initSpan.s} endDate={initSpan.e} />
             </div>
@@ -264,6 +278,7 @@ export default function TimelineView() {
             <p className="text-xs leading-relaxed text-muted">
               Reauthorization is shown as advice only; this page never moves money except through the existing close endpoint, and only when every lot is decided.
             </p>
+            <p className="text-xs text-muted">Built with Bryntum Scheduler</p>
             {!isSample && <button onClick={loadSample} className="self-start text-xs text-muted underline underline-offset-4 hover:text-ink">Load sample data</button>}
           </aside>
         </div>

@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgStudioAiModule, enableStudioDevValidations, type AgReportState, type AgStudioApi, type AgStudioMode } from "ag-studio";
 import { AgStudio, AgStudioProvider } from "ag-studio-react";
 import type { State } from "@/lib/auction/types";
-import { buildGalaAi } from "./ai";
+import { askAgent, buildGalaAi, CHIP_PROMPTS } from "./ai";
 import { buildGalaData, hasReportData, sampleState } from "./data";
 import { galaReport, PAGE_TITLES } from "./report";
 import { galaTheme } from "./theme";
@@ -25,6 +25,8 @@ export function GalaReport() {
   const [mode, setMode] = useState<AgStudioMode>("view");
   const [pageId, setPageId] = useState("overview");
   const [agent, setAgent] = useState<{ configured: boolean } | null>(null);
+  const [asking, setAsking] = useState<string | null>(null);
+  const [agentNote, setAgentNote] = useState<string | null>(null);
   const apiRef = useRef<AgStudioApi<GalaRegistry> | null>(null);
   const lastJson = useRef("");
 
@@ -75,6 +77,18 @@ export function GalaReport() {
     if (api) api.setState({ ...api.getState(), selectedPageId: id });
     setPageId(id);
   }, []);
+
+  const askChip = async (prompt: string) => {
+    if (asking) return;
+    setAgentNote(null);
+    setAsking(prompt);
+    setMode("edit");
+    // Give the chat panel a beat to mount in Edit mode before the thread is created.
+    await new Promise((r) => setTimeout(r, 300));
+    const failure = await askAgent(prompt);
+    setAsking(null);
+    if (failure) setAgentNote(`${failure} The free Gemini tier may be rate-limited: load sample data and retry in a minute.`);
+  };
 
   const changeMode = (next: AgStudioMode) => {
     setMode(next);
@@ -128,6 +142,36 @@ export function GalaReport() {
         </div>
       </header>
 
+      {data && agent?.configured && (
+        <div className="mb-4" aria-label="Ask the Studio agent">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="eyebrow mr-1">Ask the Studio agent</span>
+            {CHIP_PROMPTS.map((p) => (
+              <button
+                key={p}
+                onClick={() => void askChip(p)}
+                disabled={asking !== null}
+                aria-busy={asking === p}
+                className="rounded-full border border-line bg-surface px-3.5 py-1.5 text-sm text-ink-2 transition-colors hover:border-line-strong hover:bg-sunken disabled:opacity-60"
+              >
+                {asking === p ? "Working…" : p}
+              </button>
+            ))}
+          </div>
+          {agentNote && (
+            <p role="status" className="mt-2 flex flex-wrap items-center gap-3 text-sm text-clay-ink">
+              {agentNote}
+              {!useSample && state && (
+                <button onClick={() => setSample(sampleState())} className={btn.small}>Load sample data</button>
+              )}
+            </p>
+          )}
+        </div>
+      )}
+      {data && agent && !agent.configured && (
+        <p className="mb-4 text-sm text-muted">The Studio agent is off on this server, but the dashboard, custom widgets and sample data work without it.</p>
+      )}
+
       <div className="relative min-h-0 flex-1">
         {data ? (
           <AgStudioProvider licenseKey={LICENSE} modules={ai ? [AgStudioAiModule] : undefined}>
@@ -162,7 +206,7 @@ export function GalaReport() {
               ? "Report agent is off: set GEMINI_API_KEY on the server to enable it."
               : ""}
         </span>
-        <span>Built with AG Studio{LICENSE ? "" : " (trial, no license key set)"}.</span>
+        <span>Built with AG Studio · custom widgets: Money flow, Paddle board · Studio agent via Gemini{LICENSE ? "" : " (trial)"}</span>
       </footer>
     </div>
   );
