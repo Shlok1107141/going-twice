@@ -241,7 +241,14 @@ async function runLoop(run: Run): Promise<void> {
       }
       const settled = getState().status === "closed";
       st.phase = st.autoClose && !settled ? "error" : "done";
-      st.message = !st.autoClose ? "Gala complete. Close the auction to settle." : settled ? "Gala complete and settled." : "Gala complete, but some payments need attention. Press Close in admin to retry.";
+      const payoutPending = getState().payoutStatus?.state === "retry";
+      st.message = !st.autoClose
+        ? "Gala complete. Close the auction to settle."
+        : settled
+          ? payoutPending
+            ? "Gala complete: every capture and release is done, but the payout is pending. Retry the payout in admin."
+            : "Gala complete and settled."
+          : "Gala complete, but some payments need attention. Press Close in admin to retry.";
     }
   } catch (e) {
     console.error("[autopilot]", (e as Error).message);

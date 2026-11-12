@@ -1,4 +1,4 @@
-import { geminiFetch } from "./geminiKeys";
+import { geminiFetch, geminiKey } from "./geminiKeys";
 // Gemini vision: photo of a donated item -> structured guess. Server-only. Returns null on any
 // failure; the caller decides what to do. The AI only describes; code prices (see fmv.ts).
 
@@ -24,7 +24,7 @@ const PROMPT =
 const CONDITIONS: Condition[] = ["new", "like-new", "good", "fair"];
 
 export function visionEnabled(): boolean {
-  return Boolean(process.env.GEMINI_API_KEY);
+  return Boolean(geminiKey());
 }
 
 function clampWords(s: string, n: number): string {
@@ -85,16 +85,23 @@ async function callModel(key: string, model: string, base64: string, mimeType: s
 }
 
 /** gemini-2.5-flash first; free-tier quotas are per model, so fall through to newer flash models on 429/404. */
-export async function recognizeItem(base64: string, mimeType: string): Promise<Recognized | null> {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) return null;
+export type RecognizeResult = { item: Recognized } | { error: "rate-limited" | "unrecognized" | "unavailable" };
+
+/** "rate-limited" when every model answered 429 (all keys benched), so the caller can say "try again in a minute". */
+export async function recognizeItem(base64: string, mimeType: string): Promise<RecognizeResult> {
+  const key = geminiKey();
+  if (!key) return { error: "unavailable" };
   const primary = process.env.GEMINI_VISION_MODEL || "gemini-2.5-flash";
+  const statuses: number[] = [];
   for (const model of [primary, "gemini-3.5-flash", "gemini-3.1-flash-lite"]) {
     const r = await callModel(key, model, base64, mimeType);
+    statuses.push(r.status);
     if (r.text) {
       const out = parse(r.text);
-      if (out) return out;
+      if (out) return { item: out };
     } else console.error("[vision] HTTP", r.status, model);
   }
-  return null;
+  if (statuses.every((s) => s === 429)) return { error: "rate-limited" };
+  if (statuses.every((s) => s !== 200 && s !== 400)) return { error: "unavailable" };
+  return { error: "unrecognized" };
 }

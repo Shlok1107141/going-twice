@@ -1,10 +1,10 @@
 import { withRoom } from "@/lib/auction/room";
 import { createPaddle, parseMoney } from "@/lib/auction/engine";
-import { bad, fail, readJson, str } from "@/lib/auction/http";
+import { bad, fail, readJson, str, text } from "@/lib/auction/http";
 
 async function handle(req: Request) {
   const b = await readJson(req);
-  const name = str(b.name, 40);
+  const name = text(b.name, 40);
   const holdAmount = parseMoney(b.holdAmount, 10_000);
   const testCard = b.testCard === true;
   const email = b.email === undefined || b.email === "" ? undefined : str(b.email, 254);

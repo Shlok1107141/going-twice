@@ -104,6 +104,22 @@ export type State = {
   ledger: LedgerRow[];
   totals: { held: number; captured: number; voided: number; paidOut: number };
   receipts: Receipt[];
+  /**
+   * extra: settlement payout state once close has run. "retry" = captures and voids are done but the
+   * Payouts batch failed (e.g. INSUFFICIENT_FUNDS); POST /api/payout/retry sends only the payout.
+   */
+  payoutStatus?: PayoutStatus;
+};
+
+export type PayoutStatus = {
+  state: "sent" | "retry" | "none";
+  /** Amount the payout is for (the captured total). */
+  amount: number;
+  /** Last failure (PayPal issue / message) while state is "retry". */
+  error?: string;
+  attempts: number;
+  /** PayPal payout_batch_id once sent. */
+  batchId?: string;
 };
 
 /** Server-only bookkeeping that is not part of the public State. */
@@ -115,6 +131,10 @@ export type Internal = {
   /** stall line already said during the current quiet period. */
   stalled: boolean;
   payoutDone: boolean;
+  /** Set when a close starts: from then on no new paddles, lots or bids (money is moving). */
+  closeStarted?: boolean;
+  /** Last paddle number handed out (minus 100); reserved synchronously so parallel registrations never collide. */
+  paddleNo?: number;
   /** Payout addresses (kept out of public State): organizer/house, and per-lot consignors. */
   payout?: { organizer?: string; consignors?: Record<string, string> };
   webhookIds: string[];

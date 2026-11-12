@@ -75,7 +75,8 @@ export const settleAuction = task(
     if (plan.payout && capturedCents > 0) {
       const input: PayoutInput = { auctionId: plan.auctionId, demo: plan.demo, amountCents: capturedCents, receiver: plan.payout.receiver };
       result.payout = await ctx.run(sendPayout, input).catch((e): PayoutResult => ({ ok: false, status: "FAILED", amountCents: capturedCents, note: why(e) }));
-      if (!result.payout.ok) return result;
+      // A failed payout no longer stops the close: receipts still go out and the app records
+      // "payout pending — retry" (POST /api/payout/retry re-sends only the payout).
     }
 
     const byPaddle = new Map(captures.map((c) => [c.paddleId, c]));

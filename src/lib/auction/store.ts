@@ -140,6 +140,31 @@ function load(room: string): Store {
   return freshStore();
 }
 
+/** A room with nothing in it (no paddles, no ledger) can be dropped from memory at no cost. */
+const isEmptyRoom = (st: Store) => st.state.paddles.length === 0 && st.state.ledger.length === 0;
+
+function evict(m: Map<string, Store>, keep: string): void {
+  while (m.size > MAX_ROOMS) {
+    // Least recently used first; without persistence, never drop a room that holds paddles/money
+    // while an empty one can go instead (an evicted room would be lost, holds and all).
+    let victim: string | undefined;
+    for (const [code, st] of m) {
+      if (code === keep) continue;
+      if (persistEnabled() || isEmptyRoom(st)) {
+        victim = code;
+        break;
+      }
+    }
+    if (!victim) {
+      if (m.size <= MAX_ROOMS * 2) return; // every room is live and unpersisted: allow a soft overflow
+      victim = m.keys().next().value as string;
+      console.warn(`[store] evicting live room ${victim} (over ${MAX_ROOMS * 2} rooms, PERSIST=0)`);
+    }
+    flush(victim);
+    m.delete(victim);
+  }
+}
+
 function store(): Store {
   const room = currentRoom();
   const m = rooms();
@@ -151,12 +176,24 @@ function store(): Store {
     indexLedger(room, st);
   }
   m.set(room, st);
-  while (m.size > MAX_ROOMS) {
-    const oldest = m.keys().next().value as string;
-    flush(oldest);
-    m.delete(oldest);
-  }
+  evict(m, room);
   return st;
+}
+
+// Read-only view of a never-used room: one shared pristine lobby per type, so polling random room codes
+// (or a cold Render instance answering /api/state) never allocates, writes or evicts anything.
+const pristine = globalThis as unknown as { __gtPristine?: State };
+
+/** State for GET requests: the room if it exists (memory or disk), else a shared pristine lobby. */
+export function peekState(): State {
+  const room = currentRoom();
+  if (rooms().has(room) || (persistEnabled() && fs.existsSync(dataFile(room)))) return store().state;
+  return (pristine.__gtPristine ??= freshStore().state);
+}
+
+/** Rooms currently held in memory (diagnostics / break tests). */
+export function roomCount(): number {
+  return rooms().size;
 }
 
 /** Room that holds a PayPal id (authorization / capture / payout batch / invoice), if any. */
@@ -260,13 +297,17 @@ export function addLedger(row: Omit<LedgerRow, "id" | "ts">): LedgerRow {
 const cents = (n: number) => Math.round(n * 100);
 const dollars = (c: number) => c / 100;
 
+/** Ledger statuses that mean no money moved (failed, waiting for a retry, or replaced by a retry). */
+export const NO_MONEY_STATUSES = ["FAILED", "PENDING_RETRY", "RETRIED", "DENIED"];
+const MONEY_MOVED = (status: string) => !NO_MONEY_STATUSES.includes(status);
+
 /** Totals are derived from paddles + ledger so they can never drift. */
 export function recomputeTotals(): void {
   const s = getState();
   let held = 0, captured = 0, voided = 0, paidOut = 0;
   for (const p of s.paddles) if (p.status === "held") held += cents(p.holdAmount);
   for (const r of s.ledger) {
-    if (r.status === "FAILED") continue;
+    if (!MONEY_MOVED(r.status)) continue;
     if (r.kind === "captured") captured += cents(r.amount);
     else if (r.kind === "voided") voided += cents(r.amount);
     else if (r.kind === "payout") paidOut += cents(r.amount);

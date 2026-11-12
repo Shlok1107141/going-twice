@@ -1,9 +1,9 @@
-import { geminiFetch } from "./geminiKeys";
+import { geminiFetch, geminiKey } from "./geminiKeys";
 // Minimal Anthropic Messages API client (fetch, no SDK). Returns null on any failure so
 // callers always fall back to templates. Server-only.
 
 export function claudeEnabled(): boolean {
-  return Boolean(process.env.ANTHROPIC_API_KEY || process.env.GEMINI_API_KEY);
+  return Boolean(process.env.ANTHROPIC_API_KEY || geminiKey());
 }
 
 // Free-tier fallback when no Anthropic key is configured (Google AI Studio key, no card).
@@ -102,7 +102,7 @@ export async function callClaude(args: {
 }): Promise<string | null> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) {
-    const gKey = process.env.GEMINI_API_KEY;
+    const gKey = geminiKey();
     return gKey ? callGemini(gKey, args) : null;
   }
   const ctrl = new AbortController();

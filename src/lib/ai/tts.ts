@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { MsEdgeTTS, OUTPUT_FORMAT } from "msedge-tts";
-import { geminiFetch } from "./geminiKeys";
+import { geminiFetch, geminiKey } from "./geminiKeys";
 
 /**
  * TTS for Gus. Order: Edge neural voice (free, unlimited, mp3) -> Gemini TTS (WAV, tiny free quota) -> throw.
@@ -77,7 +77,7 @@ async function edgeTts(text: string): Promise<Buffer> {
 }
 
 async function geminiTts(text: string): Promise<Buffer> {
-  const key = process.env.GEMINI_API_KEY;
+  const key = geminiKey();
   if (!key) throw new Error("no GEMINI_API_KEY");
   // The SSE streaming endpoint is ~2x faster end-to-end than plain generateContent (~2.4 s vs 4-6 s).
   const deadline = AbortSignal.timeout(TIMEOUT_MS);

@@ -1,13 +1,13 @@
 import { withRoom } from "@/lib/auction/room";
 import { createPaddle, parseMoney } from "@/lib/auction/engine";
-import { bad, fail, readJson, str } from "@/lib/auction/http";
+import { bad, fail, readJson, str, text } from "@/lib/auction/http";
 import { getState } from "@/lib/auction/store";
 
 async function handle(req: Request) {
   const b = await readJson(req);
-  const name = str(b.name, 40);
+  const name = text(b.name, 40);
   const holdAmount = parseMoney(b.holdAmount, 10_000);
-  const instruction = str(b.instruction, 300);
+  const instruction = text(b.instruction, 300);
   const maxBid = parseMoney(b.maxBid, 10_000);
   const lotId = b.lotId === undefined || b.lotId === null || b.lotId === "" ? undefined : str(b.lotId, 64);
   const testCard = b.testCard === true;
