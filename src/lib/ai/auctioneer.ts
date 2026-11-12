@@ -36,17 +36,17 @@ const LINES: Record<GusEvent, string[]> = {
     "Feast your eyes on {lot}. Who'll start me at {amount}?",
   ],
   stall: [
-    "I see a lot of phones and not a lot of thumbs. The library fund can feel that, you know.",
-    "It's very quiet in here. This is a gym. It has never once been this quiet.",
-    "{lot} is sitting at {amount}. That's less than you spent on the last book fair, and you got erasers.",
-    "I can wait. I've sat through a three-hour recorder concert. I can absolutely wait.",
-    "Somebody out there is doing math. Stop doing math. It's for the kids.",
+    "I see a lot of phones and not a lot of thumbs. {organizer} can feel that, you know.",
+    "It's very quiet in here. Somebody say something. Anything. Preferably a number.",
+    "{lot} is sitting at {amount}. That's less than your last lunch out, and you didn't even get a story.",
+    "I can wait. I've waited out longer silences than this. I can absolutely wait.",
+    "Somebody out there is doing math. Stop doing math. It's for {beneficiary}.",
   ],
   bid: [
     "{amount} from {name}! Look at that. Decisive. Somebody had coffee.",
     "{name} is in at {amount}! Do I hear {next}? I have excellent hearing.",
-    "Ooh, {name} takes it back at {amount}. This just got personal, in a friendly, bake-sale kind of way.",
-    "{amount}! Thank you, {name}. That's about four new library books and you're not even done.",
+    "Ooh, {name} takes it back at {amount}. This just got personal, in a friendly kind of way.",
+    "{amount}! Thank you, {name}. That's a real help to {beneficiary} and you're not even done.",
     "We have {amount} from {name}, and I just watched three people reach for their phones.",
   ],
   "agent-bid": [
@@ -62,14 +62,14 @@ const LINES: Record<GusEvent, string[]> = {
   "going-twice": ["Going twice at {amount}. Last call, and I mean it this time. Mostly."],
   sold: [
     "Sold! {lot} goes to {name} for {amount}. No line, no clipboard, you're already paid up.",
-    "Sold to {name}! Everybody else, your holds are released. Go get a brownie.",
-    "And that's sold for {amount}! {name}, the PTA thanks you, and so does whoever was going to chase your check.",
+    "Sold to {name}! Everybody else, your holds are released. Go get a snack.",
+    "And that's sold for {amount}! {name}, {organizer} thanks you, and so does whoever was going to chase your check.",
   ],
   unsold: [
     "No takers for {lot}? It goes back on the shelf. Its feelings are only slightly hurt.",
   ],
   close: [
-    "That's a wrap! Winners are charged exactly what they won, everyone else's hold is released, and the money is on its way to the PTA. Thank you!",
+    "That's a wrap on {event}! Winners are charged exactly what they won, everyone else's hold is released, and the proceeds are on their way to {beneficiary}. Thank you!",
   ],
 };
 
@@ -83,7 +83,11 @@ export function money(n: number | undefined): string {
 }
 
 function fill(t: string, c: GusContext): string {
+  const ev = getState().event;
   return t
+    .replaceAll("{organizer}", ev.organizer)
+    .replaceAll("{beneficiary}", ev.beneficiary)
+    .replaceAll("{event}", ev.name)
     .replaceAll("{lot}", c.lot ?? "this lot")
     .replaceAll("{name}", c.name ?? "our bidder")
     .replaceAll("{amount}", money(c.amount) || "this price")
@@ -104,18 +108,21 @@ export function templateLine(kind: GusEvent, c: GusContext): string {
 const REPLY_RULES =
   "Reply with exactly ONE short spoken line (at most 18 words) to be read aloud. Plain text only: no markdown, no lists, no quotes, no emoji, no stage directions.";
 
-/** Charity keeps the original gala prompt word for word; other types swap in their persona and vocabulary. */
+/** Per-type persona and vocabulary, plus the event's organizer and beneficiary names. */
 function systemPrompt(): string {
-  const cfg = typeConfig(getState().auctionType);
+  const st = getState();
+  const cfg = typeConfig(st.auctionType);
+  const ev = st.event;
+  const where = `The event is "${ev.name}", run by ${ev.organizer}; proceeds go to ${ev.beneficiary}.`;
   if (cfg.type === "charity") {
     return (
-      "You are Gus, the warm, funny, slightly over-caffeinated volunteer auctioneer at an elementary school charity gala. " +
-      "Keep it school-appropriate and kind: tease the room, never a person; no mention of money moving, cards or fees. " +
+      `You are Gus, the warm, funny, slightly over-caffeinated volunteer auctioneer at a charity auction. ${where} ` +
+      "Keep it kind and family-friendly: tease the room, never a person; no mention of money moving, cards or fees. " +
       REPLY_RULES
     );
   }
   return (
-    `You are Gus, ${cfg.gus.persona}. ` +
+    `You are Gus, ${cfg.gus.persona}. ${where} ` +
     `Keep it friendly and tasteful: tease the room, never a person; no mention of cards or payment mechanics. Vocabulary you may use: ${cfg.gus.vocabulary}. ` +
     REPLY_RULES
   );

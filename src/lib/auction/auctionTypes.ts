@@ -1,6 +1,6 @@
 // Auction type config: pure data (no server imports) so the admin UI, store, engine and Gus share it.
 // Charity is the default hero; the others reuse the same hold-then-capture engine.
-import type { AuctionSettings, AuctionType } from "./types";
+import type { AuctionSettings, AuctionType, EventInfo } from "./types";
 
 export type SampleLot = {
   id: string;
@@ -50,6 +50,18 @@ export type AuctionTypeConfig = {
   gus: GusHints;
   lots: SampleLot[];
 };
+
+/** Default editable event details per auction type (placeholders; all editable in admin). */
+export const EVENT_DEFAULTS: Record<AuctionType, EventInfo> = {
+  charity: { name: "Spring Gala", organizer: "Maple Street Elementary PTA", beneficiary: "the school library fund", tagline: "An evening of giving", currency: "USD" },
+  estate: { name: "Hendricks Estate Sale", organizer: "Lakeside Auction House", beneficiary: "the Hendricks estate and its consignors", tagline: "Fine furniture, silver and curiosities", currency: "USD" },
+  collectibles: { name: "Riverside Art & Collectibles Auction", organizer: "Riverside Art & Collectibles Fair", beneficiary: "the house and its consignors", tagline: "Prints, records and ceramics", currency: "USD" },
+  farm: { name: "Dry Creek Farm & Livestock Sale", organizer: "Dry Creek Sale Barn", beneficiary: "the seller", tagline: "Livestock, equipment and feed", currency: "USD" },
+};
+
+export function defaultEvent(t: AuctionType): EventInfo {
+  return { ...EVENT_DEFAULTS[t] };
+}
 
 export const AUCTION_TYPES: Record<AuctionType, AuctionTypeConfig> = {
   charity: {

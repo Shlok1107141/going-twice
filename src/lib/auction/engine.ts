@@ -3,7 +3,7 @@
 import * as pp from "@/lib/paypal";
 import { say, money } from "@/lib/ai/auctioneer";
 import { decideAgentBid } from "@/lib/ai/agent";
-import { writeReceipt, SCHOOL_NAME, type ReceiptItem, type SalesContext } from "@/lib/ai/receipt";
+import { writeReceipt, type ReceiptItem, type SalesContext } from "@/lib/ai/receipt";
 import {
   addLedger,
   getInternal,
@@ -70,7 +70,7 @@ function findPaddle(paddleId: string): Paddle {
 /** Fresh auction in the same room; keeps the room's auction type, settings and organizer email. */
 export function reset(): State {
   const s = getState();
-  return resetStore({ type: s.auctionType, settings: s.settings, organizerEmail: getInternal().payout?.organizer });
+  return resetStore({ type: s.auctionType, settings: s.settings, event: s.event, organizerEmail: getInternal().payout?.organizer });
 }
 
 export type TypeInput = {
@@ -115,7 +115,7 @@ export function setAuctionType(input: TypeInput): State {
   }
   const s = resetStore({ type, settings, organizerEmail, consignorEmails });
   if (type !== "charity") {
-    setCaption(`Welcome to the ${cfg.stageLabel}! Grab a paddle and get those thumbs warmed up.`);
+    setCaption(`Welcome to ${s.event.name}! Grab a paddle and get those thumbs warmed up.`);
   }
   return s;
 }
@@ -505,7 +505,7 @@ function payoutPlan(s: State, receiver: string | undefined, capturedCents: numbe
       {
         receiver,
         cents: capturedCents,
-        payNote: cfg.receiptKind === "sale" ? `Sale proceeds for ${cfg.orgName}` : `Auction proceeds for ${SCHOOL_NAME}`,
+        payNote: cfg.receiptKind === "sale" ? `Sale proceeds for ${s.event.organizer}` : `Auction proceeds for ${s.event.organizer}`,
         ledgerNote: `${cfg.receiptKind === "sale" ? "to organizer" : "to treasurer"}${receiver ? ` ${receiver}` : ""}`,
         house: true,
       },
@@ -560,7 +560,7 @@ function payoutEvent(s: State, plan: PayoutLine[], capturedCents: number): strin
     const houseC = plan.filter((x) => x.house).reduce((c, x) => c + x.cents, 0);
     return `Paid out ${money(dollars(capturedCents))}: ${money(dollars(capturedCents - houseC))} to consignors, ${money(dollars(houseC))} to the house.`;
   }
-  return cfg.receiptKind === "sale" ? `Sent ${money(dollars(capturedCents))} to the organizer.` : `Sent ${money(dollars(capturedCents))} to the PTA treasurer.`;
+  return cfg.receiptKind === "sale" ? `Sent ${money(dollars(capturedCents))} to the organizer.` : `Sent ${money(dollars(capturedCents))} to the beneficiary.`;
 }
 
 async function doClose(): Promise<State> {
@@ -599,7 +599,7 @@ async function doClose(): Promise<State> {
             amount: pp.centsToAmount(wonCents),
             finalCapture: true,
             invoiceId: `GT-${i.auctionId}-${p.number}`,
-            noteToPayer: sale ? `Thank you for your purchase from ${cfg.orgName}!` : `Thank you for supporting ${SCHOOL_NAME}!`,
+            noteToPayer: sale ? `Thank you for your purchase from ${s.event.organizer}!` : `Thank you for supporting ${s.event.organizer}!`,
             softDescriptor: cfg.softDescriptor,
           });
           id = cap.id;
@@ -653,7 +653,7 @@ async function doClose(): Promise<State> {
         if (plan.some((x) => !x.receiver)) throw new Error("TREASURER_PAYPAL_EMAIL is not set");
         const batch = await pp.createPayoutBatch({
           senderBatchId: `close-${i.auctionId}`,
-          emailSubject: sale ? `${cfg.invoicerName} sale proceeds` : "Going Twice auction proceeds",
+          emailSubject: sale ? `${s.event.organizer} sale proceeds` : "Going Twice auction proceeds",
           items: plan.map((x) => ({ recipientType: "EMAIL" as const, receiver: x.receiver as string, amount: pp.centsToAmount(x.cents), note: x.payNote })),
         });
         id = batch.batch_header.payout_batch_id;
@@ -701,7 +701,7 @@ async function doClose(): Promise<State> {
             lines,
             note: text,
             memo: s.ledger.find((r) => r.kind === "captured" && r.paddleId === p.id && r.status !== "FAILED")?.paypalId,
-            invoicerBusinessName: cfg.invoicerName,
+            invoicerBusinessName: s.event.organizer,
           });
           invoiceId = inv.invoiceId;
           await pp.recordPayment(inv.invoiceId, { amount: pp.centsToAmount(cents(amount)), note: "Paid via Going Twice paddle capture" });
@@ -730,7 +730,7 @@ function salesContext(p: Paddle, s: State, lots: Lot[]): SalesContext {
   const hammer = lots.reduce((c, l) => c + cents(l.finalPrice ?? 0), 0);
   const total = cents(p.capturedAmount ?? 0) || grossCents(hammer, premiumPct);
   return {
-    orgName: cfg.orgName,
+    orgName: s.event.organizer,
     premiumPct,
     hammer: dollars(hammer),
     premium: dollars(total - hammer),

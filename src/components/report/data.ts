@@ -3,7 +3,7 @@
 
 import type { AgDataSourcesDefinition, AgFieldDefinition, AgFormat } from "ag-studio";
 import type { State } from "@/lib/auction/types";
-import { defaultSettings } from "@/lib/auction/auctionTypes";
+import { defaultEvent, defaultSettings } from "@/lib/auction/auctionTypes";
 
 type FieldSpec = [id: string, name: string, format: AgFormat, hide?: boolean];
 const USD = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 2 });
@@ -232,5 +232,6 @@ export function sampleState(): State {
     receipts: [],
     auctionType: "charity",
     settings: defaultSettings("charity"),
+    event: defaultEvent("charity"),
   };
 }

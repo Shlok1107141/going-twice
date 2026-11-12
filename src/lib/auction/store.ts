@@ -5,8 +5,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { currentRoom } from "./room";
-import { DEFAULT_AUCTION_TYPE, defaultSettings, typeConfig } from "./auctionTypes";
-import type { AuctionEvent, AuctionSettings, AuctionType, Internal, LedgerRow, Lot, State } from "./types";
+import { DEFAULT_AUCTION_TYPE, defaultEvent, defaultSettings, typeConfig } from "./auctionTypes";
+import type { AuctionEvent, AuctionSettings, AuctionType, EventInfo, Internal, LedgerRow, Lot, State } from "./types";
 
 export * from "./types";
 
@@ -65,6 +65,8 @@ function seedLots(type: AuctionType): Lot[] {
 export type NewAuctionOptions = {
   type?: AuctionType;
   settings?: Partial<AuctionSettings>;
+  /** Keep a customised event across reset (defaults to the type's template). */
+  event?: EventInfo;
   organizerEmail?: string;
   /** One email per consignor, in order of first appearance across the lots. */
   consignorEmails?: string[];
@@ -90,12 +92,13 @@ function freshStore(o: NewAuctionOptions = {}): Store {
       status: "lobby",
       auctionType: type,
       settings,
+      event: o.event ?? defaultEvent(type),
       demoMode: isDemoMode(),
       testCards: testCardsAllowed(),
       lots,
       paddles: [],
       events: [],
-      caption: { text: "Welcome to the Maple Street gala! Grab a paddle and get those thumbs warmed up.", ts: Date.now() },
+      caption: { text: `Welcome to ${(o.event ?? defaultEvent(type)).name}! Grab a paddle and get those thumbs warmed up.`, ts: Date.now() },
       ledger: [],
       totals: { held: 0, captured: 0, voided: 0, paidOut: 0 },
       receipts: [],
@@ -133,6 +136,7 @@ function load(room: string): Store {
       parsed.state.testCards = testCardsAllowed();
       // Rooms persisted before auction types existed are charity galas.
       parsed.state.auctionType ??= DEFAULT_AUCTION_TYPE;
+      parsed.state.event ??= defaultEvent(parsed.state.auctionType);
       parsed.state.settings ??= defaultSettings(parsed.state.auctionType);
       return parsed;
     }
