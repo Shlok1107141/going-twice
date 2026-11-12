@@ -30,12 +30,17 @@ services:
         sync: false
       - key: GEMINI_API_KEY
         sync: false
+      - key: GEMINI_API_KEYS # optional extra free keys, comma-separated, rotated on 429
+        sync: false
       - key: GEMINI_MODEL
+        sync: false
+      - key: GEMINI_FAST_MODEL # short auctioneer lines (default gemini-2.5-flash-lite)
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: APP_BASE_URL
         sync: false
+      # GT_TEST_HOOKS must stay unset here: it enables fault injection for scripts/break-tests.mjs only.
       - key: DEMO_MODE
         sync: false
       # Render Workflows (optional; unset = settle in-process, as in local/demo mode)

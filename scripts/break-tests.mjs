@@ -49,7 +49,6 @@ const fresh = async (p) => {
   if (r.status !== 200) throw new Error(`reset ${r.status}`);
   return room;
 };
-const nextBid = (lot) => (lot.highPaddleId ? Math.round((lot.highBid + lot.increment) * 100) / 100 : lot.startPrice);
 const lotOf = async (room, id) => (await state(room)).lots.find((l) => l.id === id);
 const no5xx = (rs) => rs.every((r) => r.status < 500);
 const hooks = (room, h) => post("/api/test/hooks", h, room);
@@ -392,7 +391,7 @@ def("payout-insufficient-funds", "payout fails with INSUFFICIENT_FUNDS mid-close
   const room = await fresh();
   const pre = await post("/api/payout/retry", undefined, room);
   assert(pre.status === 409, `retry before close -> ${pre.status}`);
-  const [a, b] = await Promise.all([paddle(room, "Ann", 200), paddle(room, "Ben", 200)]);
+  const [a] = await Promise.all([paddle(room, "Ann", 200), paddle(room, "Ben", 200)]);
   await post("/api/lot/start", { lotId: "lot-pizza" }, room);
   await post("/api/bid", { paddleId: a, lotId: "lot-pizza", amount: 40 }, room);
   await post("/api/lot/hammer", { lotId: "lot-pizza" }, room);
