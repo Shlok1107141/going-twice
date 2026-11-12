@@ -96,12 +96,12 @@ export function buildModel(state: State, now: number): Model {
       events.push({
         id: `h-${p.id}`, resourceId: p.id, startDate: new Date(a), endDate: new Date(a + HONOR_MS),
         name: `Honor period · ${money(p.holdAmount)} hold`, kind: "honor",
-        tip: "Honor period (3 days): capture success is highest.",
+        tip: `Honor period (3 days): capture success is highest. ${money(p.holdAmount)} authorization${auth.paypalId ? ` ${auth.paypalId}` : ""}.`,
       });
       events.push({
         id: `v-${p.id}`, resourceId: p.id, startDate: new Date(a + HONOR_MS), endDate: new Date(a + EXPIRY_MS),
         name: "Valid until expiry (capture depends on risk checks)", kind: "validity",
-        tip: "Authorization still valid to day 29; reauthorize to restart the honor period.",
+        tip: `Authorization${auth.paypalId ? ` ${auth.paypalId}` : ""} (${money(p.holdAmount)}) still valid to day 29; reauthorize to restart the honor period.`,
       });
       if (closedAt === undefined && p.status === "held") {
         const age = now - a;
@@ -123,13 +123,13 @@ export function buildModel(state: State, now: number): Model {
     if (cap) {
       events.push({
         id: `c-${p.id}`, resourceId: p.id, startDate: new Date(cap.ts), endDate: new Date(cap.ts), duration: 0,
-        name: `Captured ${money(cap.amount)}`, kind: "capture", tip: `Captured ${money(cap.amount)}${cap.status ? ` (${cap.status})` : ""}`,
+        name: `Captured ${money(cap.amount)}`, kind: "capture", tip: `Captured ${money(cap.amount)}${cap.status ? ` (${cap.status})` : ""}${cap.paypalId ? `, capture ${cap.paypalId}` : ""}`,
       });
     }
     if (voided) {
       events.push({
         id: `x-${p.id}`, resourceId: p.id, startDate: new Date(voided.ts), endDate: new Date(voided.ts), duration: 0,
-        name: "Hold voided", kind: "void", tip: "Authorization voided; funds released to the bidder.",
+        name: "Hold voided", kind: "void", tip: `Authorization voided${voided.paypalId ? ` (${voided.paypalId})` : ""}${voided.amount ? `, ${money(voided.amount)}` : ""}; funds released to the bidder.`,
       });
     }
     for (const e of state.events.filter((x) => x.paddleId === p.id && (x.type === "bid" || x.type === "agent-bid"))) {
@@ -156,6 +156,10 @@ export function buildModel(state: State, now: number): Model {
   }
   const hammered = state.lots.some((l) => l.status === "sold");
   const closeReady = state.status === "live" && hammered && state.lots.every((l) => l.status === "sold" || l.status === "unsold");
+  if (closeReady) {
+    const firstAmber = recs.find((r) => r.level === "amber");
+    if (firstAmber) firstAmber.action = "close";
+  }
   const order = { urgent: 0, soon: 1, amber: 2 };
   recs.sort((a, b) => order[a.level] - order[b.level]);
   return { resources, events, authAt, recs, healthy, closeReady };

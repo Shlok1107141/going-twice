@@ -5,7 +5,7 @@
 // the built-in lead prompt plus the auction's domain rules and a nudge towards our two custom
 // widgets. The lead delegates to the built-ins via delegateTo, as in the stock harness.
 
-import { createAiHarness, directLlmRunner, type AgAiHarnessSetup, type AgAiPromptStarter } from "ag-studio";
+import { createAiHarness, directLlmRunner, type AgAiHarness, type AgAiHarnessSetup, type AgAiPromptStarter } from "ag-studio";
 import { geminiAdapter } from "./gemini-adapter";
 
 const GALA_BRIEF = `You are the Gala Report analyst for "Going Twice", an AI auctioneer for school charity auctions. The reader is the PTA chair.
@@ -16,13 +16,49 @@ Rules: money is USD. Prefer the custom widgets: use widget type "money-flow" for
 export const PROMPT_STARTERS: AgAiPromptStarter[] = [
   { label: "Sold above estimate", prompt: "Which lots sold above their estimated value?" },
   { label: "Captured vs released", prompt: "Show captured vs released by paddle" },
+  { label: "Bids per lot", prompt: "Add a widget for bids per lot" },
   { label: "Money story", prompt: "Add the money flow widget and tell me how much was held, captured, released and paid out." },
 ];
 
+/** The prompt chips above the dashboard send the same prompts the chat panel's starters do. */
+export const CHIP_PROMPTS = [
+  "Which lots sold above estimated value?",
+  "Show captured vs released by paddle",
+  "Add a widget for bids per lot",
+  "What was our time to settle?",
+];
+
+// The live harness, so the page's prompt chips can talk to the same agent team as the chat panel.
+let activeHarness: AgAiHarness | null = null;
+
+/** Send a prompt to the Studio agent (new thread). Resolves with the failure text, or null on success. */
+export async function askAgent(prompt: string): Promise<string | null> {
+  if (!activeHarness) return "The report agent is not ready yet.";
+  try {
+    const session = await activeHarness.createThread({ agentId: "lead", title: prompt.slice(0, 40) });
+    session.sendMessage(prompt);
+    return await new Promise<string | null>((resolve) => {
+      const done = () => {
+        if (session.status === "error") {
+          session.removeEventListener("changed", done);
+          resolve("The Studio agent hit an error.");
+        } else if (session.status === "idle" && session.messages.some((m) => m.role === "assistant")) {
+          session.removeEventListener("changed", done);
+          resolve(null);
+        }
+      };
+      session.addEventListener("changed", done);
+      setTimeout(() => resolve(null), 90_000);
+    });
+  } catch (e) {
+    return e instanceof Error ? e.message : "The Studio agent failed.";
+  }
+}
+
 export function buildGalaAi(): AgAiHarnessSetup {
   const adapter = geminiAdapter();
-  return ({ api }) =>
-    createAiHarness(api, ({ builtIn }) => ({
+  return ({ api }) => {
+    const h = createAiHarness(api, ({ builtIn }) => ({
       agents: [
         directLlmRunner({
           ...builtIn.lead,
@@ -39,4 +75,7 @@ export function buildGalaAi(): AgAiHarnessSetup {
       primary: "lead",
       promptStarters: PROMPT_STARTERS,
     }));
+    activeHarness = h;
+    return h;
+  };
 }
