@@ -44,9 +44,10 @@ export async function geminiFetch(url: string, init: RequestInit = {}): Promise<
     const headers = new Headers(init.headers);
     headers.set("x-goog-api-key", key);
     last = await fetch(url, { ...init, headers });
-    if (last.status !== 429) return last;
-    st.benched.set(`${key}|${model}`, Date.now() + BENCH_MS);
-    console.warn(`[gemini] 429 on ${model} for key #${keys.indexOf(key) + 1}/${keys.length}; rotating`);
+    // 503 = this model is overloaded for this key right now: try the next key, and rest this one for a minute.
+    if (last.status !== 429 && last.status !== 503) return last;
+    st.benched.set(`${key}|${model}`, Date.now() + (last.status === 503 ? 60_000 : BENCH_MS));
+    console.warn(`[gemini] ${last.status} on ${model} for key #${keys.indexOf(key) + 1}/${keys.length}; rotating`);
   }
   return last as Response;
 }

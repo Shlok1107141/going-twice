@@ -124,7 +124,7 @@ async function askModel(run: Run, a: Agent, lot: Lot, amount: number, highName: 
       `Lot: ${lot.title}: ${lot.description}\nCurrent high bid: ${lot.highPaddleId ? `${money(lot.highBid)} by ${highName ?? "another bidder"}` : "none yet"}.\n` +
       `Your next bid would be ${money(amount)}; your limit is ${money(a.spec.cap)}.`,
     maxTokens: 100,
-    timeoutMs: 6000,
+    timeoutMs: 9000,
     fast: true, // a yes/no and one line: the small model is plenty, and its free quota lasts longest
   });
   const j = extractJson<{ bid?: unknown; reason?: unknown }>(reply);

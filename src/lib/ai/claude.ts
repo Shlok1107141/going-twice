@@ -31,8 +31,8 @@ async function callGemini(
   const chain = [
     ...(args.fast ? [process.env.GEMINI_FAST_MODEL] : [process.env.GEMINI_MODEL]),
     ...(args.fast
-      ? ["gemini-3.1-flash-lite", "gemini-3.5-flash", "gemini-2.5-flash"]
-      : ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-3.1-flash-lite"]),
+      ? ["gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-2.5-flash"]
+      : ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]),
   ].filter((m, i, a): m is string => !!m && a.indexOf(m) === i && !deadModels.has(m));
   if (!takeGeminiSlot()) {
     console.warn("[gemini] local rate limit reached; using fallback");
@@ -42,7 +42,20 @@ async function callGemini(
   const timer = setTimeout(() => ctrl.abort(), Math.max(args.timeoutMs ?? 4000, 6000));
   let model = chain[0] ?? "gemini-2.5-flash";
   try {
-    const send = () =>
+    // The first-choice model must not use up the whole budget when it hangs: it gets 3.5 s, then the next one is tried.
+    const send = async (first: boolean): Promise<Response> => {
+      const slow = first ? AbortSignal.timeout(3500) : null;
+      const signal = slow ? AbortSignal.any([ctrl.signal, slow]) : ctrl.signal;
+      try {
+        const res = await sendOnce(signal, true);
+        // Some models reject thinkingBudget 0: ask again with their default.
+        return res.status === 400 ? await sendOnce(signal, false) : res;
+      } catch (e) {
+        if (slow?.aborted && !ctrl.signal.aborted) return Response.json({ error: { message: "attempt timed out" } }, { status: 503 });
+        throw e;
+      }
+    };
+    const sendOnce = (signal: AbortSignal, noThinking: boolean) =>
       geminiFetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
         method: "POST",
         headers: { "x-goog-api-key": key, "content-type": "application/json" },
@@ -50,18 +63,19 @@ async function callGemini(
           systemInstruction: { parts: [{ text: args.system }] },
           contents: [{ role: "user", parts: [{ text: args.user }] }],
           generationConfig: {
-            maxOutputTokens: Math.max(args.maxTokens ?? 80, 120),
-            thinkingConfig: { thinkingBudget: 0 },
+            // A model that thinks by default spends output tokens on it, so leave room when thinking stays on.
+            maxOutputTokens: Math.max(args.maxTokens ?? 80, 120) + (noThinking ? 0 : 600),
+            ...(noThinking ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
           },
         }),
-        signal: ctrl.signal,
+        signal,
         cache: "no-store",
       });
-    let res = await send();
-    for (let k = 1; (res.status === 404 || res.status === 429) && k < chain.length; k++) {
+    let res = await send(chain.length > 1);
+    for (let k = 1; (res.status === 404 || res.status === 429 || res.status === 503) && k < chain.length; k++) {
       if (res.status === 404) deadModels.add(model);
       model = chain[k];
-      res = await send();
+      res = await send(false);
     }
     if (res.status === 404) deadModels.add(model);
     if (!res.ok) {

@@ -150,7 +150,7 @@ export async function preparePitches(): Promise<void> {
       system: systemPrompt(),
       user: todo.map((l, i) => `${i + 1}. ${l.title}: ${l.description}`).join("\n"),
       maxTokens: 400,
-      timeoutMs: 9000,
+      timeoutMs: 14000,
       fast: true,
     });
     const list = extractJson<{ pitches?: unknown }>(reply)?.pitches;
