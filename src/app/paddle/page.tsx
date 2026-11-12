@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { PayPalButtons } from "@/components/PayPalButtons";
 import { InstallHint } from "@/components/InstallHint";
@@ -141,11 +142,24 @@ function RegisterCard({ onCreated, testCards }: { onCreated: (c: Created) => voi
   );
 }
 
-function AuthorizeCard({ paddle, orderId, onDone }: { paddle: Paddle; orderId?: string; onDone: () => void }) {
+/** Small "Back" control at the top of a step card: returns to the first step. */
+function BackButton({ onClick, label = "Back" }: { onClick: () => void; label?: string }) {
+  return (
+    <button type="button" onClick={onClick} className="-mr-2 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm text-ink-2 transition-colors hover:bg-sunken hover:text-ink">
+      <span aria-hidden>&larr;</span>
+      {label}
+    </button>
+  );
+}
+
+function AuthorizeCard({ paddle, orderId, onDone, onBack }: { paddle: Paddle; orderId?: string; onDone: () => void; onBack?: () => void }) {
   const oid = orderId ?? paddle.orderId;
   return (
     <section className={`${card} space-y-4`} aria-labelledby="auth-h">
-      <Eyebrow>Paddle {paddle.number}</Eyebrow>
+      <div className="flex items-center justify-between gap-3">
+        <Eyebrow>Paddle {paddle.number}</Eyebrow>
+        {onBack && <BackButton onClick={onBack} />}
+      </div>
       <h2 id="auth-h" className="display text-3xl text-ink">
         Authorize your <span className="num">{money(paddle.holdAmount)}</span> hold
       </h2>
@@ -373,7 +387,7 @@ function AbsenteeSection({ state, refresh }: { state: State; refresh: () => Prom
             Agent paddle <span className="num display text-2xl">{agent.number}</span> <span className="text-muted">for {agent.name}</span>
           </p>
           {agent.status === "pending" ? (
-            <AuthorizeCard paddle={agent} orderId={orderId} onDone={refresh} />
+            <AuthorizeCard paddle={agent} orderId={orderId} onDone={refresh} onBack={() => stored.set(null)} />
           ) : (
             <dl className="grid grid-cols-3 gap-3 text-sm">
               {[
@@ -464,11 +478,15 @@ function Skeleton({ label }: { label: string }) {
 
 export default function PaddlePage() {
   const room = useRoom();
+  const router = useRouter();
   if (!room) {
     return (
       <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-6 px-4 pb-16 pt-10">
         <section className={`${card} space-y-4`}>
-          <h1 className="display text-3xl text-ink">Join an auction</h1>
+          <div className="flex items-center justify-between gap-3">
+            <h1 className="display text-3xl text-ink">Join an auction</h1>
+            <BackButton onClick={() => router.push("/")} label="Home" />
+          </div>
           <p className="leading-relaxed text-ink-2">Enter the room code from the host, or scan the code on the auction screen.</p>
           <JoinRoom compact />
         </section>
@@ -522,7 +540,7 @@ function PaddleRoom({ room }: { room: string }) {
       </section>
     );
   } else if (paddle.status === "pending") {
-    body = <AuthorizeCard paddle={paddle} orderId={pendingOrder} onDone={refresh} />;
+    body = <AuthorizeCard paddle={paddle} orderId={pendingOrder} onDone={refresh} onBack={forget} />;
   } else {
     body = <BidScreen state={state} paddle={paddle} refresh={refresh} />;
   }
