@@ -50,19 +50,20 @@ async function buildPlan(): Promise<SettlementPlan> {
   const s = getState();
   const i = getInternal();
   const plan: SettlementPlan = { auctionId: i.auctionId, demo: isDemoMode(), captures: [], voids: [], receipts: [] };
+  const organizer = (s as { event?: { beneficiary?: string; organizer?: string } }).event?.beneficiary || (s as { event?: { organizer?: string } }).event?.organizer;
 
   for (const p of s.paddles) {
     if (p.status !== "held" || !p.authorizationId) continue;
     const wonCents = wonBy(p).reduce((c, l) => c + cents(l.finalPrice ?? 0), 0);
     if (wonCents > 0) {
-      plan.captures.push({ auctionId: i.auctionId, demo: plan.demo, paddleId: p.id, paddleNumber: p.number, authorizationId: p.authorizationId, amountCents: wonCents, holdCents: cents(p.holdAmount) });
+      plan.captures.push({ auctionId: i.auctionId, demo: plan.demo, paddleId: p.id, paddleNumber: p.number, authorizationId: p.authorizationId, amountCents: wonCents, holdCents: cents(p.holdAmount), organizer });
     } else {
       plan.voids.push({ auctionId: i.auctionId, demo: plan.demo, paddleId: p.id, authorizationId: p.authorizationId, holdCents: cents(p.holdAmount) });
     }
   }
 
   // The payout amount is final once the captures return, so only the receiver goes in the plan.
-  if (!i.payoutDone) plan.payout = { receiver: process.env.TREASURER_PAYPAL_EMAIL || process.env.TREASURER_RECEIVER };
+  if (!i.payoutDone) plan.payout = { receiver: process.env.TREASURER_PAYPAL_EMAIL || process.env.TREASURER_RECEIVER, organizer };
 
   // Receipts: this close's winners plus earlier winners whose receipt is still missing (retried close).
   const willCapture = new Set(plan.captures.map((c) => c.paddleId));
@@ -84,6 +85,7 @@ async function buildPlan(): Promise<SettlementPlan> {
       payerEmail: p.payerEmail,
       text: texts[k],
       lines: wonBy(p).map((l) => ({ name: l.title, amountCents: cents(l.finalPrice ?? 0), fmvCents: cents(l.fmv ?? 0), listings: l.sources?.length ?? 0 })),
+      organizer,
       ...(captured ? { alreadyCaptured: true, amountCents: cents(p.capturedAmount ?? 0), captureId: ledgerCapture?.paypalId } : {}),
     });
   });

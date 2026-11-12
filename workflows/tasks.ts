@@ -73,7 +73,7 @@ export const settleAuction = task(
 
     const capturedCents = captures.reduce((s, c) => s + c.amountCents, 0);
     if (plan.payout && capturedCents > 0) {
-      const input: PayoutInput = { auctionId: plan.auctionId, demo: plan.demo, amountCents: capturedCents, receiver: plan.payout.receiver };
+      const input: PayoutInput = { auctionId: plan.auctionId, demo: plan.demo, amountCents: capturedCents, receiver: plan.payout.receiver, organizer: plan.payout.organizer };
       result.payout = await ctx.run(sendPayout, input).catch((e): PayoutResult => ({ ok: false, status: "FAILED", amountCents: capturedCents, note: why(e) }));
       if (!result.payout.ok) return result;
     }

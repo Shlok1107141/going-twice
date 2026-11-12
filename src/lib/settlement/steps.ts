@@ -8,7 +8,7 @@
 import * as pp from "@/lib/paypal";
 import type { CaptureInput, CaptureResult, PayoutInput, PayoutResult, ReceiptInput, ReceiptResult, VoidInput, VoidResult } from "./types";
 
-const SCHOOL = "Maple Street Elementary PTA";
+const ORG = (o?: string) => (o && o.trim()) || "the organizer";
 const demoId = (kind: string) => `DEMO-${kind}-${Math.random().toString(36).slice(2, 10).toUpperCase()}`;
 const msg = (e: unknown) => (e instanceof Error ? e.message.slice(0, 300) : "unknown error");
 
@@ -27,8 +27,8 @@ export async function doCapture(c: CaptureInput): Promise<CaptureResult> {
       amount: pp.centsToAmount(c.amountCents),
       finalCapture: true,
       invoiceId: `GT-${c.auctionId}-${c.paddleNumber}`,
-      noteToPayer: `Thank you for supporting ${SCHOOL}!`,
-      softDescriptor: "GOINGTWICE PTA",
+      noteToPayer: `Thank you for supporting ${ORG(c.organizer)}!`,
+      softDescriptor: "GOINGTWICE AUCTION",
     });
     if (cap.status === "DECLINED" || cap.status === "FAILED") {
       return { ...base, ok: false, paypalId: cap.id, status: "FAILED", note: `capture ${cap.status.toLowerCase()}` };
@@ -58,7 +58,7 @@ export async function doPayout(p: PayoutInput): Promise<PayoutResult> {
     const batch = await pp.createPayoutBatch({
       senderBatchId: `close-${p.auctionId}`,
       emailSubject: "Going Twice auction proceeds",
-      items: [{ recipientType: "EMAIL", receiver: p.receiver, amount: pp.centsToAmount(p.amountCents), note: `Auction proceeds for ${SCHOOL}` }],
+      items: [{ recipientType: "EMAIL", receiver: p.receiver, amount: pp.centsToAmount(p.amountCents), note: `Auction proceeds for ${ORG(p.organizer)}` }],
     });
     return { ...base, ok: true, paypalId: batch.batch_header.payout_batch_id, status: batch.batch_header.batch_status };
   } catch (e) {
@@ -81,7 +81,7 @@ export async function doReceipt(r: ReceiptInput): Promise<ReceiptResult> {
       })),
       note: r.text,
       memo: r.captureId,
-      invoicerBusinessName: "Maple Street Elementary PTA",
+      invoicerBusinessName: ORG(r.organizer),
     });
     try {
       await pp.recordPayment(inv.invoiceId, { amount: pp.centsToAmount(r.amountCents), note: "Paid via Going Twice paddle capture" });
