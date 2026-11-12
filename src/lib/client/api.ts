@@ -30,3 +30,21 @@ export async function post<T = unknown>(path: string, body?: unknown): Promise<T
   }
   return data as T;
 }
+
+/** PATCH/DELETE JSON helper (same error contract as `post`). */
+export async function send<T = unknown>(method: "PATCH" | "DELETE" | "POST", path: string, body?: unknown): Promise<T> {
+  const res = await fetch(withRoomQuery(path), {
+    method,
+    headers: { "content-type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  let data: unknown = null;
+  try {
+    data = await res.json();
+  } catch {
+    // empty or non-JSON body
+  }
+  const obj = (data ?? {}) as { ok?: boolean; error?: string };
+  if (!res.ok || obj.ok === false) throw new Error(obj.error || `Request failed (${res.status})`);
+  return data as T;
+}

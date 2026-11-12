@@ -198,7 +198,7 @@ function MoneyFlow({ dataMapping, widgetApi }: AgWidgetParams<never>) {
           <linearGradient id="gt-g-paid" x1="0" x2="1"><stop offset="0" stopColor={C.captured} stopOpacity=".55" /><stop offset="1" stopColor={C.paid} stopOpacity=".7" /></linearGradient>
         </defs>
         {/* column captions */}
-        {[["HOLDS PLACED", x0, "start"], ["OUTCOME", x1, "start"], ["TO THE PTA", x2 + bar, "end"]].map(([l, x, a]) => (
+        {[["HOLDS PLACED", x0, "start"], ["OUTCOME", x1, "start"], ["TO THE BENEFICIARY", x2 + bar, "end"]].map(([l, x, a]) => (
           <text key={l as string} x={x as number} y={18} textAnchor={a as "start" | "end"} fontSize="10.5" letterSpacing="1.6" fill={C.muted} fontWeight="600">{l}</text>
         ))}
         {/* held -> outcome ribbons */}

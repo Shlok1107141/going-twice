@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { PayPalButtons } from "@/components/PayPalButtons";
+import { InstallHint } from "@/components/InstallHint";
 import { SandboxBadge } from "@/components/SandboxBadge";
 import { btn, Eyebrow, field, fieldLabel } from "@/components/ui";
 import { post } from "@/lib/client/api";
@@ -510,13 +511,21 @@ export default function PaddlePage() {
 
   return (
     <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-6 px-4 pb-16 pt-6">
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between gap-3">
+        <p className="min-w-0 truncate text-sm text-ink-2">
+          {state?.event ? (
+            <>
+              <span className="font-medium text-ink">{state.event.name}</span> &middot; {state.event.organizer}
+            </>
+          ) : null}
+        </p>
         <SandboxBadge />
       </div>
       {state && state.status === "closed" && <Notice tone="dark">The auction has closed. Thank you for your support.</Notice>}
       {error && state && <Notice tone="bad">Connection lost. Retrying&hellip;</Notice>}
       {body}
       {state && stored.ready && state.status !== "closed" && <AbsenteeSection state={state} refresh={refresh} />}
+      <InstallHint />
       {paddle && (
         <button type="button" onClick={forget} className={`${btn.quiet} self-center`}>
           Not you? Use a different paddle

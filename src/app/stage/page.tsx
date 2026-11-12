@@ -148,7 +148,7 @@ export default function StagePage() {
         <div className="flex flex-wrap items-baseline gap-x-[1.6vw] gap-y-2">
           <Wordmark size="lg" tone="light" />
           <span className={eyebrowDark}>
-            {typeConfig(state.auctionType).stageLabel}
+            {state.event?.name ?? typeConfig(state.auctionType).stageLabel}
             {lot && lotIndex > 0 ? ` · Lot ${lotIndex} of ${state.lots.length}` : ""}
           </span>
           {premium > 0 && <span className="text-[clamp(0.75rem,0.85vw,1.1rem)] text-clay-on-dark">Plus {premium}% buyer&apos;s premium</span>}

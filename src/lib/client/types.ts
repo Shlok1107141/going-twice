@@ -13,6 +13,7 @@ export type Paddle = {
 };
 
 export type AuctionType = "charity" | "estate" | "collectibles" | "farm";
+export type EventInfo = { name: string; organizer: string; beneficiary: string; tagline?: string; currency: "USD" };
 export type AuctionSettings = { premiumPct: number; commissionPct: number };
 
 export type Lot = {
@@ -64,6 +65,7 @@ export type State = {
   status: "lobby" | "live" | "closed";
   auctionType?: AuctionType;
   settings?: AuctionSettings;
+  event?: EventInfo;
   demoMode: boolean;
   testCards?: boolean;
   currentLotId?: string;

@@ -41,7 +41,7 @@ export function AuctionTypePanel({ current, settings, disabled, onApply }: { cur
 
   return (
     <section className={panel} aria-labelledby="type-h">
-      <SectionTitle id="type-h" hint="Built for the school gala. Works for any live auction. Applying a type resets this room with that type&apos;s sample lots.">
+      <SectionTitle id="type-h" hint="Pick the kind of auction you are running. Applying a type resets this room with that type&apos;s sample lots.">
         Auction type
       </SectionTitle>
       <div role="radiogroup" aria-labelledby="type-h" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

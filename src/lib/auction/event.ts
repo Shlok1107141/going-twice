@@ -6,7 +6,6 @@ import type { EventInfo, Lot } from "./types";
 /** Plain text only: no angle brackets or control characters; collapsed whitespace. UI also renders as text. */
 export function cleanText(v: unknown, max: number, multiline = false): string | null {
   if (typeof v !== "string") return null;
-  // eslint-disable-next-line no-control-regex
   let t = v.replace(multiline ? /[\u0000-\u0009\u000b-\u001f\u007f<>]/g : /[\u0000-\u001f\u007f<>]/g, "");
   t = multiline ? t.trim() : t.replace(/\s+/g, " ").trim();
   return t.length <= max ? t : null;

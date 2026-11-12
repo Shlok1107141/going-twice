@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { AuctionTypePanel } from "@/components/admin/AuctionTypePanel";
+import { EventPanel } from "@/components/admin/EventPanel";
+import { LotsEditor } from "@/components/admin/LotsEditor";
 import { AutopilotPanel } from "@/components/admin/AutopilotPanel";
 import { SnapLot } from "@/components/admin/SnapLot";
 import { SandboxBadge } from "@/components/SandboxBadge";
@@ -94,7 +96,7 @@ function RoomLinks({ room }: { room: string }) {
   const links = [
     ["Stage", "/stage", "Projector"],
     ["Paddle", "/paddle", "Bidders' phones"],
-    ["Report", "/report", "Gala report"],
+    ["Report", "/report", "Settlement report"],
     ["Timeline", "/timeline", "Hold timeline"],
   ] as const;
   async function copy(url: string, key: string) {
@@ -203,7 +205,7 @@ export default function AdminPage() {
 
   if (!state) {
     return (
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-12 sm:px-6">
+      <main className="mx-auto w-full max-w-6xl 2xl:max-w-[88rem] flex-1 px-4 py-12 sm:px-6">
         <div className="h-24 animate-pulse rounded-xl bg-sunken" />
         <p role="status" className="mt-6 text-center text-muted">
           {error ? `Can't reach the server: ${error}` : "Opening the control room…"}
@@ -230,10 +232,10 @@ export default function AdminPage() {
   const payoutStuck = lastPayout && /^(FAILED|PENDING_RETRY)$/i.test(lastPayout.status) ? lastPayout : undefined;
 
   return (
-    <main className="mx-auto w-full max-w-6xl flex-1 space-y-10 px-4 pb-24 pt-10 sm:px-6">
+    <main className="mx-auto w-full max-w-6xl 2xl:max-w-[88rem] flex-1 space-y-10 px-4 pb-24 pt-10 sm:px-6">
       <PageHeader
         eyebrow={room ? `Control room · Room ${room.toUpperCase()}` : "Control room"}
-        title="Admin"
+        title={state.event?.name ?? "Admin"}
         lede="Run the floor: open and hammer lots, watch every hold, and settle when the night is done."
         actions={
           <>
@@ -356,6 +358,10 @@ export default function AdminPage() {
           )}
         </section>
       </div>
+
+      {state.event && <EventPanel key={`${state.event.name}|${state.event.organizer}|${state.event.beneficiary}|${state.event.tagline ?? ""}`} event={state.event} onSaved={refresh} />}
+
+      <LotsEditor lots={state.lots} closed={closed} onChanged={refresh} />
 
       <AutopilotPanel />
 
