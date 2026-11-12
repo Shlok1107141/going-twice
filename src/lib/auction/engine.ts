@@ -25,6 +25,7 @@ import {
 import { grossCents, isAuctionType, typeConfig } from "./auctionTypes";
 import { currentRoom } from "./room";
 import { settle } from "@/lib/settlement";
+import { SimulatedPayPalError, takeFailure } from "./testHooks";
 
 export class EngineError extends Error {
   constructor(public status: number, message: string) {
@@ -65,11 +66,59 @@ function findPaddle(paddleId: string): Paddle {
   return p;
 }
 
+/** Hostile-input caps per room (state is polled every second, so it must stay small). */
+export const MAX_PADDLES = 200;
+export const MAX_LOTS_PER_ROOM = 40;
+
+const cg = globalThis as unknown as { __gtClosing?: Map<string, Promise<State>>; __gtPayoutRetry?: Map<string, Promise<PayoutRetryResult>> };
+
+/** A close is running right now in this room. */
+function closingNow(): boolean {
+  return cg.__gtClosing?.has(currentRoom()) ?? false;
+}
+
+/** Why the auction can't take new paddles/lots/bids, or null when it can. Once close starts, the room is frozen. */
+function frozenReason(): string | null {
+  if (getState().status === "closed") return "Auction is closed";
+  if (getInternal().closeStarted || closingNow()) return "Auction is closing: no new paddles, lots or bids";
+  return null;
+}
+
+function assertOpen(): void {
+  const why = frozenReason();
+  if (why) throw new EngineError(409, why);
+}
+
+/** Best-effort release of every live hold of the auction being thrown away (reset / type switch). */
+function releaseHolds(s: State): void {
+  if (isDemoMode()) return;
+  for (const p of s.paddles) {
+    if (p.status !== "held" || !p.authorizationId) continue;
+    const auth = p.authorizationId;
+    p.status = "voided";
+    pp.voidAuthorization(auth).catch((e) => console.error("[reset] void", auth, "failed:", errMsg(e)));
+  }
+}
+
+/**
+ * The auction was reset or closed while we awaited PayPal: never keep a hold nobody will settle.
+ * Voids the fresh authorization (best effort) and throws 409.
+ */
+function abandonIfStale(auctionId: string, authorizationId?: string): void {
+  if (getInternal().auctionId === auctionId && !frozenReason()) return;
+  if (authorizationId && !isDemoMode()) {
+    pp.voidAuthorization(authorizationId).catch((e) => console.error("[paddle] void of abandoned hold failed:", errMsg(e)));
+  }
+  throw new EngineError(409, `The auction was reset or closed while your hold was being placed${authorizationId ? "; that hold was released" : ""}`);
+}
+
 // ---------------------------------------------------------------- setup
 
 /** Fresh auction in the same room; keeps the room's auction type, settings and organizer email. */
 export function reset(): State {
+  if (closingNow()) throw new EngineError(409, "A close is in progress; reset after it finishes");
   const s = getState();
+  releaseHolds(s);
   return resetStore({ type: s.auctionType, settings: s.settings, event: s.event, organizerEmail: getInternal().payout?.organizer });
 }
 
@@ -113,6 +162,8 @@ export function setAuctionType(input: TypeInput): State {
     if (!Array.isArray(input.consignorEmails) || input.consignorEmails.length > 10) throw new EngineError(400, "consignorEmails must be a list of up to 10 emails");
     consignorEmails = input.consignorEmails.map((e) => email(e, "consignorEmails")).filter((e): e is string => !!e);
   }
+  if (closingNow()) throw new EngineError(409, "A close is in progress; switch type after it finishes");
+  releaseHolds(getState());
   const s = resetStore({ type, settings, organizerEmail, consignorEmails });
   if (type !== "charity") {
     setCaption(`Welcome to ${s.event.name}! Grab a paddle and get those thumbs warmed up.`);
@@ -151,14 +202,20 @@ function sandboxTestCard() {
  */
 export async function createPaddle(input: NewPaddle): Promise<{ paddle: Paddle; orderId?: string }> {
   const s = getState();
-  if (s.status === "closed") throw new EngineError(409, "Auction is closed");
+  const i0 = getInternal();
   if (input.testCard && !isDemoMode() && !testCardsAllowed()) {
     throw new EngineError(400, "testCard is only allowed when PAYPAL_ENV=sandbox");
   }
+  assertOpen();
+  if (s.paddles.length >= MAX_PADDLES) throw new EngineError(409, `This room is full (${MAX_PADDLES} paddles)`);
   if (!input.email && input.testCard && !isDemoMode() && testCardsAllowed()) input.email = nextSandboxBuyerEmail();
+  // Reserve the paddle number synchronously: concurrent registrations (autopilot creates its bidders in
+  // parallel) must never share a number, since the capture invoice_id and receipt number derive from it.
+  i0.paddleNo = Math.max(i0.paddleNo ?? 0, s.paddles.length) + 1;
+  const auctionId = i0.auctionId;
   const p: Paddle = {
     id: nextId("p"),
-    number: 100 + s.paddles.length + 1,
+    number: 100 + i0.paddleNo,
     name: input.name,
     kind: input.agent ? "agent" : "human",
     holdAmount: input.holdAmount,
@@ -187,6 +244,7 @@ export async function createPaddle(input: NewPaddle): Promise<{ paddle: Paddle; 
     if (!["CREATED", "PENDING"].includes(auth.status)) {
       throw new EngineError(402, `Test-card authorization ${auth.status.toLowerCase()}`);
     }
+    abandonIfStale(auctionId, auth.id);
     p.authorizationId = auth.id;
     p.holdAmount = Math.min(p.holdAmount, dollars(pp.toCents(auth.amount.value)));
     p.status = "held";
@@ -199,6 +257,7 @@ export async function createPaddle(input: NewPaddle): Promise<{ paddle: Paddle; 
       description: `Going Twice paddle #${p.number} (hold, not a charge)`,
       requestId: `order:${getInternal().auctionId}:${p.id}`,
     });
+    abandonIfStale(auctionId);
     p.orderId = order.id;
     s.paddles.push(p);
     save();
@@ -208,17 +267,34 @@ export async function createPaddle(input: NewPaddle): Promise<{ paddle: Paddle; 
   return { paddle: p, orderId: p.status === "pending" ? p.orderId : undefined };
 }
 
-/** Live: after buyer approval, place the hold. Demo: no-op (already held). Idempotent. */
-export async function authorizePaddle(paddleId: string, orderId: string): Promise<Paddle> {
+const az = globalThis as unknown as { __gtAuthorizing?: Map<string, Promise<Paddle>> };
+
+/** Live: after buyer approval, place the hold. Demo: no-op (already held). Idempotent; a double-click shares one call. */
+export function authorizePaddle(paddleId: string, orderId: string): Promise<Paddle> {
+  const inflight = (az.__gtAuthorizing ??= new Map());
+  const key = `${currentRoom()}:${paddleId}`;
+  let run = inflight.get(key);
+  if (!run) {
+    run = doAuthorizePaddle(paddleId, orderId).finally(() => inflight.delete(key));
+    inflight.set(key, run);
+  }
+  return run;
+}
+
+async function doAuthorizePaddle(paddleId: string, orderId: string): Promise<Paddle> {
   const p = findPaddle(paddleId);
   if (p.status !== "pending") return p;
   if (isDemoMode()) return p;
   if (!p.orderId || p.orderId !== orderId) throw new EngineError(400, "orderId does not match this paddle");
+  // A hold placed after close starts would never be captured or voided.
+  assertOpen();
+  const auctionId = getInternal().auctionId;
 
   const { order, authorization } = await pp.authorizeOrder(orderId);
   if (!["CREATED", "PENDING"].includes(authorization.status)) {
     throw new EngineError(402, `Authorization ${authorization.status.toLowerCase()}`);
   }
+  abandonIfStale(auctionId, authorization.id);
   p.authorizationId = authorization.id;
   // The hold is whatever PayPal actually authorized (never more than requested).
   p.holdAmount = Math.min(p.holdAmount, dollars(pp.toCents(authorization.amount.value)));
@@ -233,7 +309,7 @@ export async function authorizePaddle(paddleId: string, orderId: string): Promis
 
 export function startLot(lotId: string): State {
   const s = getState();
-  if (s.status === "closed") throw new EngineError(409, "Auction is closed");
+  assertOpen();
   const lot = findLot(lotId);
   if (lot.status === "open") return s;
   if (lot.status !== "pending") throw new EngineError(409, "That lot has already been sold");
@@ -267,7 +343,8 @@ export type LotDraft = {
 /** Snap-a-lot: append a pending lot (numbers already computed by fmv.ts) and have Gus announce it. */
 export function addLot(draft: LotDraft): Lot {
   const s = getState();
-  if (s.status === "closed") throw new EngineError(409, "Auction is closed");
+  assertOpen();
+  if (s.lots.length >= MAX_LOTS_PER_ROOM) throw new EngineError(409, `This room already has ${MAX_LOTS_PER_ROOM} lots`);
   const lot: Lot = {
     id: nextId("lot"),
     title: draft.title,
@@ -303,6 +380,8 @@ export function placeBid(paddleId: string, lotId: string, amountIn: number, sour
   if (!lot) return { ok: false, error: "Unknown lot" };
   if (!p) return { ok: false, error: "Unknown paddle" };
   if (s.status !== "live" || lot.status !== "open" || lot.phase === "sold") return { ok: false, error: "This lot isn't taking bids" };
+  const frozen = frozenReason();
+  if (frozen) return { ok: false, error: frozen };
   if (p.status !== "held") return { ok: false, error: "Your paddle doesn't have an active hold yet" };
   if (source === "human" && p.kind === "agent") return { ok: false, error: "Agent paddles bid automatically" };
   const amount = parseMoney(amountIn);
@@ -469,8 +548,6 @@ async function runAgent(paddleId: string, lotId: string): Promise<void> {
 
 // ---------------------------------------------------------------- settlement
 
-const cg = globalThis as unknown as { __gtClosing?: Map<string, Promise<State>> };
-
 /** Idempotent. Concurrent calls share one run; a closed auction returns state with no money movement. */
 export function close(): Promise<State> {
   const closing = (cg.__gtClosing ??= new Map());
@@ -569,6 +646,8 @@ async function doClose(): Promise<State> {
   const i = getInternal();
   const demo = isDemoMode();
   const step = demo ? Math.max(20, 350 / tickSpeed()) : 0; // lets the money board animate in demo
+  i.closeStarted = true; // freeze: no new paddles, lots or bids from here on (also across a retried close)
+  const room = currentRoom();
 
   for (const lot of s.lots) if (lot.status === "open") hammerLot(lot);
   pushEvent({ type: "system", text: "Closing the auction: settling every paddle." });
@@ -594,6 +673,8 @@ async function doClose(): Promise<State> {
       try {
         let id = demoId("CAPTURE");
         let status = "COMPLETED";
+        const simulated = takeFailure(room, "capture");
+        if (simulated) throw new SimulatedPayPalError(simulated);
         if (!demo) {
           const cap = await pp.captureAuthorization(p.authorizationId, {
             amount: pp.centsToAmount(wonCents),
@@ -640,36 +721,10 @@ async function doClose(): Promise<State> {
   }
 
   // 2) One Payouts batch for the captured total (organizer, or consignors + house for consignment).
-  recomputeTotals();
-  const capturedCents = cents(s.totals.captured);
-  if (!i.payoutDone && capturedCents > 0) {
-    if (step) await sleep(step);
-    const receiver = i.payout?.organizer || process.env.TREASURER_PAYPAL_EMAIL || process.env.TREASURER_RECEIVER;
-    try {
-      const plan = payoutPlan(s, receiver, capturedCents);
-      let id = demoId("PAYOUT");
-      let status = "SUCCESS";
-      if (!demo) {
-        if (plan.some((x) => !x.receiver)) throw new Error("TREASURER_PAYPAL_EMAIL is not set");
-        const batch = await pp.createPayoutBatch({
-          senderBatchId: `close-${i.auctionId}`,
-          emailSubject: sale ? `${s.event.organizer} sale proceeds` : "Going Twice auction proceeds",
-          items: plan.map((x) => ({ recipientType: "EMAIL" as const, receiver: x.receiver as string, amount: pp.centsToAmount(x.cents), note: x.payNote })),
-        });
-        id = batch.batch_header.payout_batch_id;
-        status = batch.batch_header.batch_status;
-      }
-      i.payoutDone = true;
-      for (const x of plan) addLedger({ kind: "payout", amount: dollars(x.cents), paypalId: id, status, note: x.ledgerNote });
-      pushEvent({ type: "system", text: payoutEvent(s, plan, capturedCents) });
-    } catch (e) {
-      addLedger({ kind: "payout", amount: dollars(capturedCents), status: "FAILED", note: errMsg(e) });
-      pushEvent({ type: "system", text: cfg.payoutPlan === "consignment" ? "Payouts to the consignors failed. Close again to retry." : "Payout to the treasurer failed. Close again to retry." });
-      return s;
-    }
-  } else {
-    i.payoutDone = true;
-  }
+  //    A failed payout does NOT block the close: every capture/void is final by now, so the auction
+  //    closes with a "payout pending — retry" ledger row and POST /api/payout/retry sends only the payout.
+  if (step) await sleep(step);
+  await sendPayout();
 
   // 3) Receipts (best effort; never blocks closing). Claude phrases, code supplies the numbers.
   const winners = s.paddles.filter((p) => p.status === "captured" && !s.receipts.some((r) => r.paddleId === p.id));
@@ -716,10 +771,118 @@ async function doClose(): Promise<State> {
   }
 
   s.status = "closed";
-  pushEvent({ type: "system", text: `Auction closed. Collected ${money(s.totals.captured)}, released ${money(s.totals.voided)} in holds, paid out ${money(s.totals.paidOut)}.` });
-  say("close", {});
   recomputeTotals();
+  pushEvent({ type: "system", text: `Auction closed. Collected ${money(s.totals.captured)}, released ${money(s.totals.voided)} in holds, ${s.payoutStatus?.state === "retry" ? `payout of ${money(s.payoutStatus.amount)} pending retry` : `paid out ${money(s.totals.paidOut)}`}.` });
+  say("close", {});
   return s;
+}
+
+const PAYOUT_PENDING_NOTE = "payout pending — retry";
+
+/** PayPal said this sender_batch_id was already used: an earlier attempt created the batch. */
+function isDuplicateBatch(e: unknown): boolean {
+  const x = e as { issue?: string; paypalName?: string; message?: string; details?: { issue?: string; field?: string }[] };
+  const text = [x.issue, x.message, ...(x.details ?? []).map((d) => `${d.field} ${d.issue}`)].join(" ").toUpperCase();
+  return text.includes("SENDER_BATCH_ID") && (text.includes("ALREADY") || text.includes("DUPLICATE"));
+}
+
+/**
+ * Send the one Payouts batch for the captured total, once. Idempotent: `payoutDone` short-circuits, the
+ * sender_batch_id is always `close-<auctionId>` (PayPal refuses a reused one for 30 days, so money can
+ * never go out twice), and each attempt gets its own PayPal-Request-Id so a retry is not answered with the
+ * cached failure. On failure: one PENDING_RETRY ledger row (updated in place) + state.payoutStatus "retry".
+ * Returns true when the payout is done (or there was nothing to pay).
+ */
+async function sendPayout(): Promise<boolean> {
+  const s = getState();
+  const i = getInternal();
+  const demo = isDemoMode();
+  const cfg = typeConfig(s.auctionType);
+  recomputeTotals();
+  if (i.payoutDone) return true;
+  const capturedCents = cents(s.totals.captured);
+  if (capturedCents <= 0) {
+    i.payoutDone = true;
+    s.payoutStatus = { state: "none", amount: 0, attempts: 0 };
+    return true;
+  }
+  const attempts = (s.payoutStatus?.attempts ?? 0) + 1;
+  const senderBatchId = `close-${i.auctionId}`;
+  const receiver = i.payout?.organizer || process.env.TREASURER_PAYPAL_EMAIL || process.env.TREASURER_RECEIVER;
+  const plan = payoutPlan(s, receiver, capturedCents);
+  try {
+    const simulated = takeFailure(currentRoom(), "payout");
+    if (simulated) throw new SimulatedPayPalError(simulated);
+    let id = demoId("PAYOUT");
+    let status = "SUCCESS";
+    let extra = "";
+    if (!demo) {
+      if (plan.some((x) => !x.receiver)) throw new Error("TREASURER_PAYPAL_EMAIL is not set");
+      try {
+        const batch = await pp.createPayoutBatch({
+          senderBatchId,
+          requestId: attempts > 1 ? `payout:${senderBatchId}:attempt-${attempts}` : undefined,
+          emailSubject: cfg.receiptKind === "sale" ? `${s.event.organizer} sale proceeds` : `${s.event.organizer} auction proceeds`,
+          items: plan.map((x) => ({ recipientType: "EMAIL" as const, receiver: x.receiver as string, amount: pp.centsToAmount(x.cents), note: x.payNote })),
+        });
+        id = batch.batch_header.payout_batch_id;
+        status = batch.batch_header.batch_status;
+      } catch (e) {
+        if (attempts === 1 || !isDuplicateBatch(e)) throw e;
+        // An earlier attempt reached PayPal after all; never send a second batch.
+        id = senderBatchId;
+        extra = `; batch ${senderBatchId} already created by an earlier attempt, not sent twice`;
+      }
+    }
+    i.payoutDone = true;
+    for (const r of s.ledger) if (r.kind === "payout" && r.status === "PENDING_RETRY") r.status = "RETRIED";
+    for (const x of plan) addLedger({ kind: "payout", amount: dollars(x.cents), paypalId: id, status, note: `${x.ledgerNote}${attempts > 1 ? `; sent on attempt ${attempts}` : ""}${extra}` });
+    s.payoutStatus = { state: "sent", amount: dollars(capturedCents), attempts, batchId: id };
+    pushEvent({ type: "system", text: payoutEvent(s, plan, capturedCents) });
+    recomputeTotals();
+    return true;
+  } catch (e) {
+    const x = e as { issue?: string; paypalName?: string };
+    const reason = x.issue ?? x.paypalName ?? errMsg(e);
+    const note = `${PAYOUT_PENDING_NOTE} (POST /api/payout/retry): ${errMsg(e)}`;
+    const pending = s.ledger.find((r) => r.kind === "payout" && r.status === "PENDING_RETRY");
+    if (pending) {
+      pending.note = `${note}; attempt ${attempts}`;
+      pending.ts = Date.now();
+    } else {
+      addLedger({ kind: "payout", amount: dollars(capturedCents), status: "PENDING_RETRY", note });
+    }
+    s.payoutStatus = { state: "retry", amount: dollars(capturedCents), error: reason.slice(0, 200), attempts };
+    const who = cfg.payoutPlan === "consignment" ? "the consignors" : cfg.receiptKind === "sale" ? "the organizer" : "the treasurer";
+    pushEvent({ type: "system", text: `Payout of ${money(dollars(capturedCents))} to ${who} is pending (${reason.slice(0, 80)}). Every capture and release is done; retry the payout from admin.` });
+    recomputeTotals();
+    return false;
+  }
+}
+
+export type PayoutRetryResult = { ok: boolean; retried: boolean; state: State };
+
+/**
+ * POST /api/payout/retry: re-send ONLY the payout of a closed auction. Idempotent: concurrent calls share
+ * one attempt, and once paid every call returns {ok:true, retried:false} with no money movement.
+ */
+export function retryPayout(): Promise<PayoutRetryResult> {
+  const inflight = (cg.__gtPayoutRetry ??= new Map());
+  const room = currentRoom();
+  let run = inflight.get(room);
+  if (!run) {
+    run = (async (): Promise<PayoutRetryResult> => {
+      if (closingNow()) throw new EngineError(409, "A close is in progress; retry the payout after it finishes");
+      const s = getState();
+      if (s.status !== "closed") throw new EngineError(409, "Close the auction first: the payout runs after every capture and void");
+      if (getInternal().payoutDone) return { ok: true, retried: false, state: s };
+      const ok = await sendPayout();
+      if (ok) pushEvent({ type: "system", text: `Payout retry succeeded: paid out ${money(s.totals.paidOut)}.` });
+      return { ok, retried: true, state: getState() };
+    })().finally(() => inflight.delete(room));
+    inflight.set(room, run);
+  }
+  return run;
 }
 
 /** Sales-receipt numbers for one winner: all code-computed, so receipt, invoice and capture always agree. */

@@ -31,3 +31,13 @@ export function fail(e: unknown): Response {
   }
   return bad("Something went wrong", 500);
 }
+
+// C0/C1 controls, zero-width and bidi-override characters (a name like "‮evil" can flip the stage text).
+const INVISIBLE = /[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁠-⁩﻿]/g;
+
+/** Display text from users (names, titles): invisible/control characters removed, whitespace collapsed.
+ *  HTML is NOT escaped here: it is stored as plain text and the UI renders it as text (React escapes). */
+export function text(v: unknown, max: number): string | null {
+  if (typeof v !== "string") return null;
+  return str(v.replace(INVISIBLE, "").replace(/\s+/g, " "), max);
+}

@@ -101,6 +101,7 @@ function resultOf(details: { results?: unknown }): SettlementResult | null {
 
 async function renderWorkflowsExecutor(opts: SettleOptions): Promise<State> {
   const s = getState();
+  getInternal().closeStarted = true; // freeze the room, same as the in-process close
   opts.hammerOpenLots();
   pushEvent({ type: "system", text: "Closing the auction: settling every paddle on Render Workflows." });
   const plan = await buildPlan();
@@ -174,13 +175,20 @@ function applyResult(plan: SettlementPlan, r: SettlementResult, runId: string): 
 
   if (r.payout) {
     const amount = dollars(r.payout.amountCents);
-    addLedger({ kind: "payout", amount, paypalId: r.payout.paypalId, status: r.payout.ok ? r.payout.status : "FAILED", note: r.payout.ok ? `to treasurer${r.payout.receiver ? ` ${r.payout.receiver}` : ""}; ${via}` : `${r.payout.note ?? "payout failed"}; ${via}` });
+    const attempts = (s.payoutStatus?.attempts ?? 0) + 1;
     if (!r.payout.ok) {
-      pushEvent({ type: "system", text: "Payout to the treasurer failed. Close again to retry." });
-      return s;
+      // Same contract as the in-process close: captures/voids are final, so close anyway and leave a
+      // "payout pending — retry" row; POST /api/payout/retry re-sends only the payout (in-process).
+      const reason = r.payout.note ?? "payout failed";
+      addLedger({ kind: "payout", amount, status: "PENDING_RETRY", note: `payout pending — retry (POST /api/payout/retry): ${reason}; ${via}` });
+      s.payoutStatus = { state: "retry", amount, error: reason.slice(0, 200), attempts };
+      pushEvent({ type: "system", text: `Payout of ${money(amount)} to the beneficiary is pending (${reason.slice(0, 80)}). Every capture and release is done; retry the payout from admin.` });
+    } else {
+      addLedger({ kind: "payout", amount, paypalId: r.payout.paypalId, status: r.payout.status, note: `to treasurer${r.payout.receiver ? ` ${r.payout.receiver}` : ""}; ${via}` });
+      i.payoutDone = true;
+      s.payoutStatus = { state: "sent", amount, attempts, batchId: r.payout.paypalId };
+      pushEvent({ type: "system", text: `Sent ${money(amount)} to the beneficiary.` });
     }
-    i.payoutDone = true;
-    pushEvent({ type: "system", text: `Sent ${money(amount)} to the beneficiary.` });
   } else {
     i.payoutDone = true;
   }

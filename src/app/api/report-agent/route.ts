@@ -3,31 +3,49 @@
 // The browser sends the Gemini request body; this route adds the key and pins the model.
 
 import { connection } from "next/server";
-import { geminiFetch } from "@/lib/ai/geminiKeys";
+import { geminiFetch, geminiKey } from "@/lib/ai/geminiKeys";
 
 const MODEL = () => process.env.GEMINI_REPORT_MODEL || "gemini-2.5-flash";
 // The free tier has a small per-model daily quota, so a 429 falls through to the next model.
 const FALLBACK_MODELS = ["gemini-3.5-flash", "gemini-3.5-flash-lite"];
 const err = (status: number, message: string) => Response.json({ error: { message } }, { status });
+const MAX_BODY = 512 * 1024;
+// This route spends the server's Gemini quota, so cap it: at most 20 report turns per minute per instance.
+const RATE = { windowMs: 60_000, max: 20 };
+const rl = globalThis as unknown as { __gtReportHits?: number[] };
+function rateLimited(): boolean {
+  const now = Date.now();
+  const hits = (rl.__gtReportHits ??= []).filter((t) => now - t < RATE.windowMs);
+  rl.__gtReportHits = hits;
+  if (hits.length >= RATE.max) return true;
+  hits.push(now);
+  return false;
+}
 
 /** The page asks whether the agent is configured so it can explain itself instead of failing. */
 export async function GET() {
   await connection();
-  return Response.json({ configured: !!process.env.GEMINI_API_KEY, model: MODEL() });
+  return Response.json({ configured: !!geminiKey(), model: MODEL() });
 }
 
 export async function POST(req: Request) {
   await connection();
-  const key = process.env.GEMINI_API_KEY;
+  const key = geminiKey();
   if (!key) return err(503, "The report agent needs GEMINI_API_KEY on the server.");
+  if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY) return err(413, "Request too large.");
 
   let body: unknown;
   try {
-    body = ((await req.json()) as { body?: unknown }).body;
+    const raw = await req.text();
+    if (raw.length > MAX_BODY) return err(413, "Request too large.");
+    body = (JSON.parse(raw) as { body?: unknown } | null)?.body;
   } catch {
     return err(400, "Invalid JSON.");
   }
-  if (!body || typeof body !== "object") return err(400, "Missing request body.");
+  if (!body || typeof body !== "object" || Array.isArray(body) || !Array.isArray((body as { contents?: unknown }).contents)) {
+    return err(400, "Missing request body (expected a Gemini generateContent body with contents[]).");
+  }
+  if (rateLimited()) return err(429, "The report agent is busy. Try again in a minute.");
 
   const models = [MODEL(), ...FALLBACK_MODELS.filter((m) => m !== MODEL())];
   let last = "Gemini request failed.";

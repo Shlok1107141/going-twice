@@ -75,6 +75,7 @@ async function main() {
   check(health.ok === true && health.demoMode === false, "health ok, server is NOT in demo mode");
 
   if (process.env.AUCTION_TYPE === "estate") return estateFlow();
+  if (process.env.AUCTION_TYPE === "collectibles") return collectiblesFlow();
 
   const s0 = await api("POST", "/api/reset");
   check(s0.status === "lobby" && s0.paddles.length === 0, "reset -> lobby, no paddles");
@@ -231,6 +232,36 @@ async function estateFlow() {
   }
   check(receipts.length === 1 && /sales receipt/i.test(receipts[0].text) && /consignor credit/i.test(receipts[0].text), "sales receipt with consignor credit");
   for (const r of ledger.filter((x) => x.kind === "receipt")) console.log(`  ..   receipt invoice ${r.paypalId ?? "(none)"} ${r.status}${r.note ? ` (${r.note})` : ""}`);
+  const again = await api("POST", "/api/close");
+  check(again.ledger.length === ledger.length, "second close moves no money");
+  console.log(failures ? `\n${failures} check(s) FAILED` : "\nALL CHECKS PASSED");
+  process.exit(failures ? 1 : 0);
+}
+
+// AUCTION_TYPE=collectibles: 10% buyer's premium. Capture = hammer + premium (still below the hold),
+// the loser is voided, one payout of the captured total to the house.
+async function collectiblesFlow() {
+  const st0 = await api("POST", "/api/auction/type", { type: "collectibles" });
+  check(st0.auctionType === "collectibles" && st0.settings?.premiumPct === 10, "collectibles room created: 10% buyer's premium");
+  const ivy = await api("POST", "/api/paddle", { name: "Ivy R.", holdAmount: 300, testCard: true });
+  const max = await api("POST", "/api/paddle", { name: "Max T.", holdAmount: 300, testCard: true });
+  check(ivy.held === true && max.held === true, "two test-card paddles held");
+  await api("POST", "/api/lot/start", { lotId: "lot-vinyl" });
+  check((await bid(ivy.paddleId, "lot-vinyl", 120)).ok === true, "Ivy bids $120");
+  check((await bid(max.paddleId, "lot-vinyl", 140)).ok === true, "Max bids $140");
+  const over = await bid(ivy.paddleId, "lot-vinyl", 280);
+  check(over.ok === false && /premium/.test(over.error ?? ""), `$280 + 10% premium refused against a $300 hold (${over.error})`);
+  check((await bid(ivy.paddleId, "lot-vinyl", 160)).ok === true, "Ivy bids $160");
+  await api("POST", "/api/lot/hammer", { lotId: "lot-vinyl" });
+  const closed = await api("POST", "/api/close");
+  check(closed.status === "closed", "close -> closed");
+  const { ledger, totals } = closed;
+  const cap = ledger.find((r) => r.kind === "captured" && r.status !== "FAILED");
+  check(cap && isReal(cap.paypalId) && cap.amount === 176 && cap.amount < 300, `capture ${cap?.paypalId} $${cap?.amount} = $160 hammer + $16 premium, below the $300 hold`);
+  const v = ledger.find((r) => r.kind === "voided");
+  check(v && v.paddleId === max.paddleId && isReal(v.paypalId), `Max's hold voided (${v?.paypalId})`);
+  const pays = ledger.filter((r) => r.kind === "payout");
+  check(pays.length === 1 && isReal(pays[0].paypalId) && totals.paidOut === totals.captured && totals.captured === 176, `payout ${pays[0]?.paypalId} $${totals.paidOut} = captured`);
   const again = await api("POST", "/api/close");
   check(again.ledger.length === ledger.length, "second close moves no money");
   console.log(failures ? `\n${failures} check(s) FAILED` : "\nALL CHECKS PASSED");

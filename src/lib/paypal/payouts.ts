@@ -19,6 +19,8 @@ export interface PayoutItemInput {
 export interface CreatePayoutBatchInput {
   /** Idempotency key: PayPal rejects a reused sender_batch_id for 30 days. Use e.g. `close:${auctionId}`. */
   senderBatchId: string;
+  /** PayPal-Request-Id; default `payout:<senderBatchId>`. A retry after a refused batch passes a fresh one. */
+  requestId?: string;
   emailSubject?: string;
   emailMessage?: string;
   items: PayoutItemInput[];
@@ -73,7 +75,7 @@ export async function createPayoutBatch(input: CreatePayoutBatchInput): Promise<
   };
   return paypalRequest<PayoutBatch>("POST", "/v1/payments/payouts", {
     body,
-    requestId: `payout:${input.senderBatchId}`,
+    requestId: input.requestId ?? `payout:${input.senderBatchId}`,
     representation: false,
   });
 }

@@ -1,6 +1,6 @@
 import { withRoom } from "@/lib/auction/room";
 import { addLot } from "@/lib/auction/engine";
-import { bad, fail, readJson, str } from "@/lib/auction/http";
+import { bad, fail, readJson, text } from "@/lib/auction/http";
 
 const num = (v: unknown, min: number, max: number): number | null =>
   typeof v === "number" && Number.isFinite(v) && v >= min && v <= max ? Math.round(v * 100) / 100 : null;
@@ -9,8 +9,8 @@ export const POST = (req: Request) => withRoom(req, () => handle(req));
 
 async function handle(req: Request) {
   const b = await readJson(req);
-  const title = str(b.title, 120);
-  const description = str(b.description, 600) ?? "";
+  const title = text(b.title, 120);
+  const description = text(b.description, 600) ?? "";
   const startPrice = num(b.startPrice, 1, 100_000);
   const increment = num(b.increment, 1, 10_000);
   const fmv = num(b.fmv, 0, 1_000_000);
