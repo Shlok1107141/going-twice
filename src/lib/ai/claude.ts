@@ -1,3 +1,4 @@
+import { geminiFetch } from "./geminiKeys";
 // Minimal Anthropic Messages API client (fetch, no SDK). Returns null on any failure so
 // callers always fall back to templates. Server-only.
 
@@ -35,7 +36,7 @@ async function callGemini(
   const timer = setTimeout(() => ctrl.abort(), Math.max(args.timeoutMs ?? 4000, 6000));
   try {
     const send = () =>
-      fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      geminiFetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
         method: "POST",
         headers: { "x-goog-api-key": key, "content-type": "application/json" },
         body: JSON.stringify({

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { MsEdgeTTS, OUTPUT_FORMAT } from "msedge-tts";
+import { geminiFetch } from "./geminiKeys";
 
 /**
  * TTS for Gus. Order: Edge neural voice (free, unlimited, mp3) -> Gemini TTS (WAV, tiny free quota) -> throw.
@@ -84,7 +85,7 @@ async function geminiTts(text: string): Promise<Buffer> {
   let lastStatus = 0;
   for (const model of MODELS) {
     if ((benchedUntil.get(model) ?? 0) > Date.now()) continue;
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`, {
+    const res = await geminiFetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-goog-api-key": key },
       body: JSON.stringify({

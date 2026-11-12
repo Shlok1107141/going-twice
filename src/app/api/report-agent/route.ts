@@ -3,6 +3,7 @@
 // The browser sends the Gemini request body; this route adds the key and pins the model.
 
 import { connection } from "next/server";
+import { geminiFetch } from "@/lib/ai/geminiKeys";
 
 const MODEL = () => process.env.GEMINI_REPORT_MODEL || "gemini-2.5-flash";
 // The free tier has a small per-model daily quota, so a 429 falls through to the next model.
@@ -43,7 +44,7 @@ export async function POST(req: Request) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const res = await fetch(url, {
+        const res = await geminiFetch(url, {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-goog-api-key": key },
           body: JSON.stringify(payload),

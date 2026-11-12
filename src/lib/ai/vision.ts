@@ -1,3 +1,4 @@
+import { geminiFetch } from "./geminiKeys";
 // Gemini vision: photo of a donated item -> structured guess. Server-only. Returns null on any
 // failure; the caller decides what to do. The AI only describes; code prices (see fmv.ts).
 
@@ -58,7 +59,7 @@ async function callModel(key: string, model: string, base64: string, mimeType: s
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 25000);
   try {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+    const res = await geminiFetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: "POST",
       headers: { "x-goog-api-key": key, "content-type": "application/json" },
       body: JSON.stringify({
