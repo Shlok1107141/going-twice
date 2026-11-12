@@ -3,7 +3,7 @@ import { GalaReport } from "@/components/report/GalaReport";
 
 export const metadata: Metadata = {
   title: "Gala Report | Going Twice",
-  description: "Money flow, paddles and lots for the PTA chair, built with AG Studio.",
+  description: "Money flow, paddles and lots for the organizer, built with AG Studio.",
 };
 
 export default function ReportPage() {

@@ -189,23 +189,23 @@ export default function StagePage() {
                   <img
                     src={lot.image}
                     alt={lot.title}
-                    className="h-[min(16vw,30vh)] w-[min(16vw,30vh)] shrink-0 rounded-lg border border-[var(--t-line)] bg-[var(--t-panel)] object-cover"
+                    className="h-[max(5rem,min(16vw,30vh))] w-[max(5rem,min(16vw,30vh))] shrink-0 rounded-lg border border-[var(--t-line)] bg-[var(--t-panel)] object-cover"
                   />
                 ) : (
                   <div
                     aria-hidden
-                    className="grid h-[min(14vw,26vh)] w-[min(14vw,26vh)] shrink-0 place-items-center rounded-lg border border-[var(--t-line)] bg-[var(--t-panel)] text-[min(7vw,13vh)]"
+                    className="grid h-[max(5rem,min(14vw,26vh))] w-[max(5rem,min(14vw,26vh))] shrink-0 place-items-center rounded-lg border border-[var(--t-line)] bg-[var(--t-panel)] text-[max(3.15rem,min(7vw,13vh))]"
                   >
                     {lot.emoji}
                   </div>
                 )}
                 <div className="min-w-0 pt-[0.3vw]">
                   <p className="eyebrow text-[clamp(0.7rem,0.8vw,1rem)] text-clay-on-dark">{statusLine(state, lot)}</p>
-                  <h2 className="display mt-[0.5vw] line-clamp-2 text-[min(5vw,9.5vh)] text-[var(--t-text)]">{lot.title}</h2>
+                  <h2 className="display mt-[0.5vw] line-clamp-2 text-[max(2.25rem,min(5vw,9.5vh))] text-[var(--t-text)]">{lot.title}</h2>
                   {lot.description && (
-                    <p className="mt-[0.6vw] line-clamp-2 max-w-[60ch] text-[min(1.25vw,2.4vh)] leading-snug text-[var(--t-muted)]">{lot.description}</p>
+                    <p className="mt-[0.6vw] line-clamp-2 max-w-[60ch] text-[max(0.9rem,min(1.25vw,2.4vh))] leading-snug text-[var(--t-muted)]">{lot.description}</p>
                   )}
-                  <p className="mt-[0.6vw] flex flex-wrap gap-x-[1.2vw] text-[min(1.15vw,2.2vh)] text-[var(--t-muted)]">
+                  <p className="mt-[0.6vw] flex flex-wrap gap-x-[1.2vw] text-[max(0.9rem,min(1.15vw,2.2vh))] text-[var(--t-muted)]">
                     {!!lot.fmv && lot.sources?.length ? (
                       <span>
                         Est. value <span className="num text-[var(--t-text)]">{money(lot.fmv)}</span> · via Channel3
@@ -225,8 +225,8 @@ export default function StagePage() {
                     <div className="glint pointer-events-none absolute inset-0" aria-hidden />
                     <div className="flex flex-wrap items-end justify-between gap-[1.4vw]">
                       <div>
-                        <p className="anim-sold display text-[min(8vw,15vh)] uppercase italic leading-none text-[#cfe3d4]">Sold</p>
-                        <p className="mt-[0.6vw] text-[min(1.7vw,3.2vh)] text-[var(--t-text)]">
+                        <p className="anim-sold display text-[max(3.6rem,min(8vw,15vh))] uppercase italic leading-none text-[#cfe3d4]">Sold</p>
+                        <p className="mt-[0.6vw] text-[max(0.9rem,min(1.7vw,3.2vh))] text-[var(--t-text)]">
                           {leader ? (
                             <>
                               to Paddle <span className="num display text-[1.25em] text-clay-on-dark">{leader.number}</span> · {leader.name}
@@ -238,7 +238,7 @@ export default function StagePage() {
                       </div>
                       <div className="text-right">
                         <p className={eyebrowDark}>Hammer price</p>
-                        <p className="num display anim-bump text-[min(10vw,19vh)] leading-none text-[var(--t-text)]">{money(shownAmount)}</p>
+                        <p className="num display anim-bump text-[max(4.5rem,min(10vw,19vh))] leading-none text-[var(--t-text)]">{money(shownAmount)}</p>
                       </div>
                     </div>
                   </div>
@@ -246,25 +246,25 @@ export default function StagePage() {
                   <div className="mt-[1.6vw] grid items-end gap-[2vw] md:grid-cols-[auto_minmax(0,1fr)]">
                     <div>
                       <p className={eyebrowDark}>{hasBid ? "Current bid" : lot.status === "open" ? "Opening bid" : "Starts at"}</p>
-                      <p key={shownAmount} aria-live="polite" className="num display anim-bump mt-[0.4vw] text-[min(13vw,25vh)] leading-[0.85] text-[var(--t-text)]">
+                      <p key={shownAmount} aria-live="polite" className="num display anim-bump mt-[0.4vw] text-[max(5.85rem,min(13vw,25vh))] leading-[0.85] text-[var(--t-text)]">
                         {money(shownAmount)}
                       </p>
                     </div>
                     <div className="pb-[0.8vw]">
                       <p className={eyebrowDark}>High bidder</p>
                       {leader ? (
-                        <p key={leader.id} className="anim-rise mt-[0.4vw] text-[min(2.4vw,4.6vh)] leading-tight text-[var(--t-text)]">
+                        <p key={leader.id} className="anim-rise mt-[0.4vw] text-[max(1.08rem,min(2.4vw,4.6vh))] leading-tight text-[var(--t-text)]">
                           <span className="num display mr-[0.6vw] text-[1.35em] text-clay-on-dark">{leader.number}</span>
                           {leader.name}
                           {leader.kind === "agent" && <span className="ml-[0.6vw] text-[0.55em] text-[#b9c2e0]">AI agent</span>}
                         </p>
                       ) : (
-                        <p className="display mt-[0.4vw] text-[min(2.2vw,4.2vh)] italic text-[var(--t-muted)]">
+                        <p className="display mt-[0.4vw] text-[max(0.99rem,min(2.2vw,4.2vh))] italic text-[var(--t-muted)]">
                           {lot.status === "open" ? "Awaiting the first paddle" : "—"}
                         </p>
                       )}
                       {lot.status === "open" && (
-                        <p className="mt-[0.5vw] text-[min(1.25vw,2.4vh)] text-[var(--t-muted)]">
+                        <p className="mt-[0.5vw] text-[max(0.9rem,min(1.25vw,2.4vh))] text-[var(--t-muted)]">
                           Next bid <span className="num text-[var(--t-text)]">{money(Math.max(lot.startPrice, lot.highBid + lot.increment))}</span>
                         </p>
                       )}
@@ -276,8 +276,8 @@ export default function StagePage() {
           ) : (
             <div className="grid flex-1 place-items-center text-center">
               <div>
-                <p className="display text-[min(4vw,7vh)] text-[var(--t-text)]">The room is being prepared.</p>
-                <p className="mt-3 text-[min(1.3vw,2.4vh)] text-[var(--t-muted)]">Lots will appear here as the organizer adds them.</p>
+                <p className="display text-[max(1.8rem,min(4vw,7vh))] text-[var(--t-text)]">The room is being prepared.</p>
+                <p className="mt-3 text-[max(0.9rem,min(1.3vw,2.4vh))] text-[var(--t-muted)]">Lots will appear here as the organizer adds them.</p>
               </div>
             </div>
           )}
@@ -286,7 +286,7 @@ export default function StagePage() {
         {/* Right rail */}
         <aside className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-[1.2vw]">
           <section aria-label="Join the auction" className="flex items-center gap-[1.2vw] rounded-xl border border-[var(--t-line)] bg-[var(--t-panel)] p-[1vw]">
-            <QrCode value={joinUrl} label="QR code linking to the bidder paddle page" className="h-[min(8vw,15vh)] w-[min(8vw,15vh)] shrink-0" />
+            <QrCode value={joinUrl} label="QR code linking to the bidder paddle page" className="h-[max(5rem,min(8vw,15vh))] w-[max(5rem,min(8vw,15vh))] shrink-0" />
             <div className="min-w-0">
               <p className="display text-[clamp(1.2rem,1.7vw,2.3rem)] leading-tight text-[var(--t-text)]">Raise a paddle</p>
               <p className="mt-1 text-[clamp(0.75rem,0.85vw,1.1rem)] text-[var(--t-muted)]">Scan to bid. PayPal holds, never charges, until you win.</p>
@@ -345,9 +345,9 @@ export default function StagePage() {
               )}
             </div>
           </div>
-          <div aria-hidden className="h-[min(4.5vw,8vh)] w-px shrink-0 bg-[var(--t-line)]" />
+          <div aria-hidden className="h-[max(5rem,min(4.5vw,8vh))] w-px shrink-0 bg-[var(--t-line)]" />
           <blockquote aria-live="polite" className="min-w-0 flex-1">
-            <p key={state.caption.ts} className="anim-fade display line-clamp-2 text-[min(2.1vw,4vh)] italic leading-snug text-[var(--t-text)]">
+            <p key={state.caption.ts} className="anim-fade display line-clamp-2 text-[max(0.95rem,min(2.1vw,4vh))] italic leading-snug text-[var(--t-text)]">
               {state.caption.text ? <>&ldquo;{state.caption.text}&rdquo;</> : <span className="text-[var(--t-muted)]">{PERSONA} is clearing his throat&hellip;</span>}
             </p>
           </blockquote>
