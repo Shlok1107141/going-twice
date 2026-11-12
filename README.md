@@ -34,7 +34,7 @@ The demo shows how it works. Your own auction is the product itself.
   4. **Close and settle.** One button. PayPal charges each winner what they won, releases every other hold, pays out the proceeds and sends receipts.
 - **Join an auction**: type a room code on the home page to bid, or to watch its stage.
 
-The **PayPal** page in the top bar follows the money for whichever room you are in.
+Every auction page (stage, bid, host, PayPal, report, timeline) belongs to a room. Inside a room the top bar links them all, and the **PayPal** page follows that room's money.
 
 ## The problem
 
@@ -93,7 +93,7 @@ Gus speaks with **Kokoro-82M**, an open-source text-to-speech model (Apache-2.0,
 | **Channel3** | Snap a lot: retail listings for a photographed item, used to estimate its fair market value |
 | **Render** | Hosting (`render.yaml`). A Render Workflows settlement is implemented in `workflows/` and is off by default; see `docs/WORKFLOWS.md` |
 | **APIMatic** | Its PayPal skills guided the REST client's timeouts, retries and typed errors; notes in `docs/APIMATIC.md` |
-| **Postman** | `docs/postman`: a collection that runs the whole flow against a server (58 assertions) |
+| **Postman** | `docs/postman`: a collection that runs the whole flow against a server (57 assertions) |
 
 AG Studio and Bryntum run on trial licences.
 
@@ -138,6 +138,7 @@ Next.js 16 (App Router, TypeScript, Tailwind), REST to PayPal, hosted on Render.
 ## Limits
 
 - Sandbox only. Rooms live in the server's memory, so a redeploy clears them.
+- A room code is the only key to a room: anyone who has it can open that room's Host page. A real deployment would add a host sign-in.
 - Estimated values on charity receipts are estimates from retail listings, not tax advice.
 - The free Render instance sleeps when idle, so the first request can take up to a minute.
 - Gus's voice for custom text needs a one-time download of about 90 MB in the browser. Pre-rendered lines play without it.
