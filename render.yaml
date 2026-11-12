@@ -26,6 +26,8 @@ services:
         sync: false
       - key: TREASURER_PAYPAL_EMAIL
         sync: false
+      - key: SANDBOX_BUYER_EMAILS # sandbox test-account emails only (no passwords); receipts + default estate consignors
+        value: sb-pffz953856754@personal.example.com,sb-wblr653856755@personal.example.com,sb-gv1q453856779@personal.example.com
       - key: PAYPAL_WEBHOOK_ID
         sync: false
       - key: GEMINI_API_KEY
