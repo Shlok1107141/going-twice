@@ -1,0 +1,1096 @@
+{
+  "info": {
+    "name": "Going Twice: judge flow",
+    "_postman_id": "6b0c7a52-9f3e-4c1e-8f61-0a1b2c3d4e5f",
+    "description": "Live auction where every bidder's paddle is a PayPal authorization hold. Run the folders in order: create a room, register 3 test-card paddles + 1 absentee AI agent, bid, hammer, close. Tests assert the money rules: captures are below the holds, non-winners are voided, payout == captured.\n\nSet `baseUrl` in the environment (local `http://localhost:3510` or the Render URL). `room` is filled in by the first request.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Room",
+      "item": [
+        {
+          "name": "Create a fresh room",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test(\"room code\", () => pm.expect(j.room).to.match(/^[A-Z0-9]{6}$/));",
+                  "pm.environment.set(\"room\", j.room);",
+                  "pm.collectionVariables.set(\"room\", j.room);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/room/new?room={{room}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "room",
+                "new"
+              ],
+              "query": [
+                {
+                  "key": "room",
+                  "value": "{{room}}"
+                }
+              ]
+            },
+            "description": "Every run gets its own isolated auction room (?room=CODE), so judges never collide."
+          }
+        },
+        {
+          "name": "Reset the room (fresh charity gala, 4 lots)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const s = pm.response.json();",
+                  "pm.test(\"lobby with lots and no paddles\", () => { pm.expect(s.status).to.eql(\"lobby\"); pm.expect(s.lots.length).to.be.above(2); pm.expect(s.paddles.length).to.eql(0); });",
+                  "pm.test(\"demo/live mode reported\", () => pm.expect(s.demoMode).to.be.a(\"boolean\"));",
+                  "console.log(s.demoMode ? \"DEMO mode (simulated PayPal)\" : \"LIVE PayPal sandbox: real authorization holds\");"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/reset?room={{room}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "reset"
+              ],
+              "query": [
+                {
+                  "key": "room",
+                  "value": "{{room}}"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Paddles = PayPal authorization holds",
+      "item": [
+        {
+          "name": "Paddle 1: Avery (sandbox test card, $200 hold)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test(\"paddle is held (authorization placed)\", () => pm.expect(j.held).to.eql(true));",
+                  "pm.collectionVariables.set(\"paddle1\", j.paddleId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Avery\",\n  \"holdAmount\": 200,\n  \"testCard\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/paddle?room={{room}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "paddle"
+              ],
+              "query": [
+                {
+                  "key": "room",
+                  "value": "{{room}}"
+                }
+              ]
+            },
+            "description": "Registers a bidder. Live sandbox: PayPal Orders v2 intent=AUTHORIZE funded with PayPal's published sandbox test Visa, authorized immediately, so this paddle is a REAL $200 authorization hold (no buyer login). Demo mode: simulated hold."
+          }
+        },
+        {
+          "name": "Paddle 2: Blake (sandbox test card, $300 hold)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test(\"paddle is held (authorization placed)\", () => pm.expect(j.held).to.eql(true));",
+                  "pm.collectionVariables.set(\"paddle2\", j.paddleId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Blake\",\n  \"holdAmount\": 300,\n  \"testCard\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/paddle?room={{room}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "paddle"
+              ],
+              "query": [
+                {
+                  "key": "room",
+                  "value": "{{room}}"
+                }
+              ]
+            },
+            "description": "Registers a bidder. Live sandbox: PayPal Orders v2 intent=AUTHORIZE funded with PayPal's published sandbox test Visa, authorized immediately, so this paddle is a REAL $300 authorization hold (no buyer login). Demo mode: simulated hold."
+          }
+        },
+        {
+          "name": "Paddle 3: Casey (sandbox test card, $150 hold)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test(\"paddle is held (authorization placed)\", () => pm.expect(j.held).to.eql(true));",
+                  "pm.collectionVariables.set(\"paddle3\", j.paddleId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Casey\",\n  \"holdAmount\": 150,\n  \"testCard\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/paddle?room={{room}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "paddle"
+              ],
+              "query": [
+                {
+                  "key": "room",
+                  "value": "{{room}}"
+                }
+              ]
+            },
+            "description": "Registers a bidder. Live sandbox: PayPal Orders v2 intent=AUTHORIZE funded with PayPal's published sandbox test Visa, authorized immediately, so this paddle is a REAL $150 authorization hold (no buyer login). Demo mode: simulated hold."
+          }
+        },
+        {
+          "name": "Absentee AI agent paddle (quilt up to $120)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test(\"agent paddle held\", () => pm.expect(j.held).to.eql(true));",
+                  "pm.collectionVariables.set(\"agentId\", j.paddleId);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Dana (absentee)\",\n  \"holdAmount\": 150,\n  \"instruction\": \"Bid on the signed class quilt, up to $120.\",\n  \"maxBid\": 120,\n  \"lotId\": \"lot-quilt\",\n  \"testCard\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/agent?room={{room}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "agent"
+              ],
+              "query": [
+                {
+                  "key": "room",
+                  "value": "{{room}}"
+                }
+              ]
+            },
+            "description": "An absentee bidder: one sentence becomes a bidding policy. The AI only proposes; every agent bid goes through the same engine validation as a human tap, capped by maxBid and the hold."
+          }
+        },
+        {
+          "name": "State: 4 holds placed",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const s = pm.response.json();",
+                  "pm.test(\"4 held paddles\", () => pm.expect(s.paddles.filter(p => p.status === \"held\").length).to.eql(4));",
+                  "pm.test(\"held total = sum of holds\", () => pm.expect(s.totals.held).to.eql(800));",
+                  "pm.test(\"one authorized ledger row per paddle\", () => pm.expect(s.ledger.filter(r => r.kind === \"authorized\").length).to.eql(4));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/state?room={{room}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "state"
+              ],
+              "query": [
+                {
+                  "key": "room",
+                  "value": "{{room}}"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Live bidding",
+      "item": [
+        {
+          "name": "Start lot: Family Pizza Night Basket",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const s = pm.response.json();",
+                  "pm.test(\"lot open, auction live\", () => { pm.expect(s.status).to.eql(\"live\"); pm.expect(s.currentLotId).to.eql(\"lot-pizza\"); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lotId\": \"lot-pizza\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/lot/start?room={{room}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "lot",
+                "start"
+              ],
+              "query": [
+                {
+                  "key": "room",
+                  "value": "{{room}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Bid: Avery $40",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test(\"bid accepted\", () => pm.expect(j.ok, j.error).to.eql(true));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paddleId\": \"{{paddle1}}\",\n  \"lotId\": \"lot-pizza\",\n  \"amount\": 40\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/bid?room={{room}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bid"
+              ],
+              "query": [
+                {
+                  "key": "room",
+                  "value": "{{room}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Bid: Blake $45",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test(\"bid accepted\", () => pm.expect(j.ok, j.error).to.eql(true));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paddleId\": \"{{paddle2}}\",\n  \"lotId\": \"lot-pizza\",\n  \"amount\": 45\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/bid?room={{room}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bid"
+              ],
+              "query": [
+                {
+                  "key": "room",
+                  "value": "{{room}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Bid: Avery $45 (too low, refused)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test(\"bid refused by the engine (code validates money, not AI)\", () => { pm.expect(j.ok).to.eql(false); pm.expect(j.error).to.be.a(\"string\"); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paddleId\": \"{{paddle1}}\",\n  \"lotId\": \"lot-pizza\",\n  \"amount\": 45\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/bid?room={{room}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bid"
+              ],
+              "query": [
+                {
+                  "key": "room",
+                  "value": "{{room}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Bid: Casey $500 (over her $150 hold, refused)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test(\"bid refused by the engine (code validates money, not AI)\", () => { pm.expect(j.ok).to.eql(false); pm.expect(j.error).to.be.a(\"string\"); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paddleId\": \"{{paddle3}}\",\n  \"lotId\": \"lot-pizza\",\n  \"amount\": 500\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/bid?room={{room}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bid"
+              ],
+              "query": [
+                {
+                  "key": "room",
+                  "value": "{{room}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Bid: Avery $60",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test(\"bid accepted\", () => pm.expect(j.ok, j.error).to.eql(true));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paddleId\": \"{{paddle1}}\",\n  \"lotId\": \"lot-pizza\",\n  \"amount\": 60\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/bid?room={{room}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bid"
+              ],
+              "query": [
+                {
+                  "key": "room",
+                  "value": "{{room}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Hammer: SOLD pizza basket",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const lot = pm.response.json().lots.find(l => l.id === \"lot-pizza\");",
+                  "pm.test(\"sold to Avery for $60\", () => { pm.expect(lot.status).to.eql(\"sold\"); pm.expect(lot.winnerPaddleId).to.eql(pm.collectionVariables.get(\"paddle1\")); pm.expect(lot.finalPrice).to.eql(60); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lotId\": \"lot-pizza\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/lot/hammer?room={{room}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "lot",
+                "hammer"
+              ],
+              "query": [
+                {
+                  "key": "room",
+                  "value": "{{room}}"
+                }
+              ]
+            },
+            "description": "No money moves at the hammer: the winning bid only commits part of the paddle's hold."
+          }
+        },
+        {
+          "name": "Start lot: Signed Class Quilt (the absentee agent's lot)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set(\"agentPolls\", 0);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lotId\": \"lot-quilt\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/lot/start?room={{room}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "lot",
+                "start"
+              ],
+              "query": [
+                {
+                  "key": "room",
+                  "value": "{{room}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Wait for the absentee agent to bid (polls up to 15 s)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "setTimeout(() => {}, 1000);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const lot = pm.response.json().lots.find(l => l.id === \"lot-quilt\");",
+                  "const n = Number(pm.collectionVariables.get(\"agentPolls\") || 0) + 1;",
+                  "pm.collectionVariables.set(\"agentPolls\", n);",
+                  "const agentHigh = lot.highPaddleId === pm.collectionVariables.get(\"agentId\");",
+                  "if (!agentHigh && n < 15) { if (pm.execution && pm.execution.setNextRequest) pm.execution.setNextRequest(pm.info.requestName); else postman.setNextRequest(pm.info.requestName); }",
+                  "else pm.test(\"absentee agent is the high bidder on the quilt\", () => pm.expect(agentHigh, \"agent did not bid\").to.eql(true));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/state?room={{room}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "state"
+              ],
+              "query": [
+                {
+                  "key": "room",
+                  "value": "{{room}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Bid: Blake $90 on the quilt",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test(\"bid accepted\", () => pm.expect(j.ok, j.error).to.eql(true));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paddleId\": \"{{paddle2}}\",\n  \"lotId\": \"lot-quilt\",\n  \"amount\": 90\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/bid?room={{room}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bid"
+              ],
+              "query": [
+                {
+                  "key": "room",
+                  "value": "{{room}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Hammer: SOLD quilt",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "setTimeout(() => {}, 2500);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const lot = pm.response.json().lots.find(l => l.id === \"lot-quilt\");",
+                  "pm.test(\"quilt sold\", () => pm.expect(lot.status).to.eql(\"sold\"));",
+                  "pm.test(\"winning bid within the agent's cap if the agent won\", () => { if (lot.winnerPaddleId === pm.collectionVariables.get(\"agentId\")) pm.expect(lot.finalPrice).to.be.at.most(120); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lotId\": \"lot-quilt\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/lot/hammer?room={{room}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "lot",
+                "hammer"
+              ],
+              "query": [
+                {
+                  "key": "room",
+                  "value": "{{room}}"
+                }
+              ]
+            },
+            "description": "Waits a moment so the agent can answer Blake (it re-bids up to its $120 cap)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Close = capture winners, void the rest, one payout",
+      "item": [
+        {
+          "name": "Close the auction (captures, voids, Payouts batch, receipts)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const s = pm.response.json();",
+                  "const caps = s.ledger.filter(r => r.kind === \"captured\" && r.status !== \"FAILED\");",
+                  "const voids = s.ledger.filter(r => r.kind === \"voided\" && r.status !== \"FAILED\");",
+                  "pm.test(\"auction closed\", () => pm.expect(s.status).to.eql(\"closed\"));",
+                  "pm.test(\"every capture is LESS than that paddle's hold (partial final_capture)\", () => { pm.expect(caps.length).to.be.at.least(2); caps.forEach(c => { const p = s.paddles.find(x => x.id === c.paddleId); pm.expect(c.amount).to.be.below(p.holdAmount); }); });",
+                  "pm.test(\"one capture per winner\", () => pm.expect(new Set(caps.map(c => c.paddleId)).size).to.eql(caps.length));",
+                  "pm.test(\"non-winners voided (Casey never won)\", () => { pm.expect(voids.length).to.be.at.least(1); pm.expect(s.paddles.find(p => p.id === pm.collectionVariables.get(\"paddle3\")).status).to.eql(\"voided\"); });",
+                  "pm.test(\"nothing left on hold\", () => pm.expect(s.totals.held).to.eql(0));",
+                  "pm.test(\"payout == captured\", () => pm.expect(s.totals.paidOut).to.eql(s.totals.captured));",
+                  "pm.collectionVariables.set(\"ledgerLen\", s.ledger.length);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/close?room={{room}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "close"
+              ],
+              "query": [
+                {
+                  "key": "room",
+                  "value": "{{room}}"
+                }
+              ]
+            },
+            "description": "One final_capture per winner for what they won (less than the hold; the rest is released), a void for every other paddle, one PayPal Payouts batch of the captured total to the treasurer, and an invoice receipt per winner. Idempotent: run it twice and no extra money moves."
+          }
+        },
+        {
+          "name": "Close again (idempotent: no new money movement)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const s = pm.response.json();",
+                  "pm.test(\"no new ledger rows\", () => pm.expect(s.ledger.length).to.eql(Number(pm.collectionVariables.get(\"ledgerLen\"))));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/close?room={{room}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "close"
+              ],
+              "query": [
+                {
+                  "key": "room",
+                  "value": "{{room}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Payout retry probe (nothing pending)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test(\"payout retry available, nothing pending\", () => { pm.expect(j.available).to.eql(true); pm.expect(j.pending).to.eql(false); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/payout/retry?room={{room}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payout",
+                "retry"
+              ],
+              "query": [
+                {
+                  "key": "room",
+                  "value": "{{room}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Final state",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const s = pm.response.json();",
+                  "const sum = (k) => Math.round(s.ledger.filter(r => r.kind === k && r.status !== \"FAILED\").reduce((t, r) => t + r.amount * 100, 0)) / 100;",
+                  "pm.test(\"captured < total holds\", () => pm.expect(s.totals.captured).to.be.below(800));",
+                  "pm.test(\"captured + released = total holds\", () => pm.expect(Math.round((s.totals.captured + s.totals.voided) * 100)).to.be.at.most(80000));",
+                  "pm.test(\"payout ledger sums to captured\", () => pm.expect(sum(\"payout\")).to.eql(s.totals.captured));",
+                  "pm.test(\"a receipt per winner\", () => pm.expect(s.receipts.length).to.eql(s.ledger.filter(r => r.kind === \"captured\" && r.status !== \"FAILED\").length));",
+                  "console.log(`captured $${s.totals.captured}, released $${s.totals.voided}, paid out $${s.totals.paidOut}`);",
+                  "s.ledger.forEach(r => console.log(r.kind.padEnd(10), String(r.amount).padStart(7), r.status.padEnd(10), r.paypalId || \"\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/state?room={{room}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "state"
+              ],
+              "query": [
+                {
+                  "key": "room",
+                  "value": "{{room}}"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "paddle1",
+      "value": ""
+    },
+    {
+      "key": "paddle2",
+      "value": ""
+    },
+    {
+      "key": "paddle3",
+      "value": ""
+    },
+    {
+      "key": "agentId",
+      "value": ""
+    }
+  ]
+}
