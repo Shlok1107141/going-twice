@@ -6,7 +6,7 @@ import { SandboxBadge } from "@/components/SandboxBadge";
 import { Wordmark } from "@/components/SiteNav";
 import { typeConfig } from "@/lib/auction/auctionTypes";
 import { post } from "@/lib/client/api";
-import { clock, findPaddle, headroom, isBidEvent, money, stageLot } from "@/lib/client/format";
+import { clock, findPaddle, headroom, money, stageLot } from "@/lib/client/format";
 import type { AuctionEvent, Lot, Paddle, State } from "@/lib/client/types";
 import { useAuctionState } from "@/lib/client/useAuctionState";
 import { useOrigin } from "@/lib/client/useOrigin";
@@ -189,19 +189,19 @@ export default function StagePage() {
                   <img
                     src={lot.image}
                     alt={lot.title}
-                    className="h-[min(13vw,24vh)] w-[min(13vw,24vh)] shrink-0 rounded-lg border border-[var(--t-line)] bg-[var(--t-panel)] object-cover"
+                    className="h-[min(16vw,30vh)] w-[min(16vw,30vh)] shrink-0 rounded-lg border border-[var(--t-line)] bg-[var(--t-panel)] object-cover"
                   />
                 ) : (
                   <div
                     aria-hidden
-                    className="grid h-[min(9vw,17vh)] w-[min(9vw,17vh)] shrink-0 place-items-center rounded-lg border border-[var(--t-line)] bg-[var(--t-panel)] text-[min(4.6vw,8.5vh)]"
+                    className="grid h-[min(14vw,26vh)] w-[min(14vw,26vh)] shrink-0 place-items-center rounded-lg border border-[var(--t-line)] bg-[var(--t-panel)] text-[min(7vw,13vh)]"
                   >
                     {lot.emoji}
                   </div>
                 )}
                 <div className="min-w-0 pt-[0.3vw]">
                   <p className="eyebrow text-[clamp(0.7rem,0.8vw,1rem)] text-clay-on-dark">{statusLine(state, lot)}</p>
-                  <h2 className="display mt-[0.5vw] line-clamp-2 text-[min(4.2vw,8vh)] text-[var(--t-text)]">{lot.title}</h2>
+                  <h2 className="display mt-[0.5vw] line-clamp-2 text-[min(5vw,9.5vh)] text-[var(--t-text)]">{lot.title}</h2>
                   {lot.description && (
                     <p className="mt-[0.6vw] line-clamp-2 max-w-[60ch] text-[min(1.25vw,2.4vh)] leading-snug text-[var(--t-muted)]">{lot.description}</p>
                   )}
@@ -225,7 +225,7 @@ export default function StagePage() {
                     <div className="glint pointer-events-none absolute inset-0" aria-hidden />
                     <div className="flex flex-wrap items-end justify-between gap-[1.4vw]">
                       <div>
-                        <p className="anim-sold display text-[min(7vw,13vh)] uppercase italic leading-none text-[#cfe3d4]">Sold</p>
+                        <p className="anim-sold display text-[min(8vw,15vh)] uppercase italic leading-none text-[#cfe3d4]">Sold</p>
                         <p className="mt-[0.6vw] text-[min(1.7vw,3.2vh)] text-[var(--t-text)]">
                           {leader ? (
                             <>
@@ -238,7 +238,7 @@ export default function StagePage() {
                       </div>
                       <div className="text-right">
                         <p className={eyebrowDark}>Hammer price</p>
-                        <p className="num display anim-bump text-[min(8vw,15vh)] leading-none text-[var(--t-text)]">{money(shownAmount)}</p>
+                        <p className="num display anim-bump text-[min(10vw,19vh)] leading-none text-[var(--t-text)]">{money(shownAmount)}</p>
                       </div>
                     </div>
                   </div>
@@ -246,7 +246,7 @@ export default function StagePage() {
                   <div className="mt-[1.6vw] grid items-end gap-[2vw] md:grid-cols-[auto_minmax(0,1fr)]">
                     <div>
                       <p className={eyebrowDark}>{hasBid ? "Current bid" : lot.status === "open" ? "Opening bid" : "Starts at"}</p>
-                      <p key={shownAmount} aria-live="polite" className="num display anim-bump mt-[0.4vw] text-[min(11vw,21vh)] leading-[0.9] text-[var(--t-text)]">
+                      <p key={shownAmount} aria-live="polite" className="num display anim-bump mt-[0.4vw] text-[min(13vw,25vh)] leading-[0.85] text-[var(--t-text)]">
                         {money(shownAmount)}
                       </p>
                     </div>
@@ -299,14 +299,14 @@ export default function StagePage() {
             {ticker.length === 0 ? (
               <p className="display mt-[0.8vw] text-[clamp(1rem,1.3vw,1.7rem)] italic text-[var(--t-muted)]">Quiet, for now.</p>
             ) : (
-              <ul className="min-h-0 overflow-hidden">
+              <ul className="min-h-0 overflow-hidden [mask-image:linear-gradient(to_bottom,black_70%,transparent)]">
                 {ticker.map((e, i) => (
                   <li
                     key={e.id}
                     className="anim-rise flex items-baseline justify-between gap-3 border-b border-[var(--t-line)]/60 py-[0.45vw]"
                     style={{ opacity: Math.max(0.35, 1 - i * 0.1) }}
                   >
-                    <span className={`min-w-0 text-[clamp(0.8rem,0.95vw,1.3rem)] leading-snug ${eventTone[e.type]} ${isBidEvent(e) ? "font-medium" : ""}`}>{e.text}</span>
+                    <span className={`min-w-0 text-[clamp(0.8rem,0.95vw,1.3rem)] leading-snug ${eventTone[e.type]}`}>{e.text}</span>
                     <span className="num shrink-0 text-[clamp(0.65rem,0.7vw,0.95rem)] text-[var(--t-muted)]">{clock(e.ts)}</span>
                   </li>
                 ))}

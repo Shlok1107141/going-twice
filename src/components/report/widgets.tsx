@@ -237,7 +237,7 @@ function Node({ x, y, w, h, color, label, amount, side }: { x: number; y: number
     <g>
       <rect x={x} y={y} width={w} height={hh} rx={3} fill={color} />
       <text x={tx} y={y + hh / 2 - 2} textAnchor={anchor} fontSize="12.5" fontWeight="600" fill={C.ink} stroke="#fffdf8" strokeWidth="3" paintOrder="stroke">{label}</text>
-      <text x={tx} y={y + hh / 2 + 14} textAnchor={anchor} fontSize="16" fontWeight="600" fill={color} stroke="#ffffff" strokeWidth="3" paintOrder="stroke" style={{ fontFamily: "var(--font-display), Georgia, serif" }}>{money(amount)}</text>
+      <text x={tx} y={y + hh / 2 + 14} textAnchor={anchor} fontSize="16" fontWeight="600" fill={color} stroke="#ffffff" strokeWidth="3" paintOrder="stroke" style={{ fontFamily: "var(--font-display), Georgia, serif", fontVariantNumeric: "lining-nums tabular-nums" }}>{money(amount)}</text>
     </g>
   );
 }

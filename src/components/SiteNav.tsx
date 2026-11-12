@@ -52,10 +52,10 @@ export function SiteNav() {
         aria-label="Main"
         className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-3 sm:h-[var(--nav-h)] sm:flex-nowrap sm:px-6 sm:py-0"
       >
-        <Link href={withRoom("/", room)} className="shrink-0 rounded-sm" aria-label="Going Twice, home">
-          <Wordmark />
-        </Link>
-        <div className="flex items-center gap-3">
+        <div className="flex shrink-0 items-center gap-4">
+          <Link href={withRoom("/", room)} className="rounded-sm" aria-label="Going Twice, home">
+            <Wordmark />
+          </Link>
           {room && (
             <span className="hidden rounded-full border border-line bg-surface px-2.5 py-0.5 font-mono text-xs text-ink-2 md:inline" title="Auction room">
               Room {room.toUpperCase()}

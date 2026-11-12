@@ -292,6 +292,7 @@ function BidScreen({ state, paddle, refresh }: { state: State; paddle: Paddle; r
       </div>
 
       <Meter paddle={paddle} />
+      <HoldExplainer />
 
       {won.length > 0 && (
         <section className={card} aria-labelledby="won-h">
