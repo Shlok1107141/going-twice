@@ -64,10 +64,10 @@ export function AutopilotPanel() {
     <section aria-labelledby="auto-h" className="overflow-hidden rounded-xl bg-ink p-8 text-canvas shadow-lift">
       <div className="flex flex-wrap items-start justify-between gap-6">
         <div className="max-w-xl">
-          <p className="eyebrow text-clay-on-dark">Agentic auction</p>
-          <h2 id="auto-h" className="display mt-2 text-3xl sm:text-4xl">Run a full auction on autopilot</h2>
+          <p className="eyebrow text-clay-on-dark">No bidders handy?</p>
+          <h2 id="auto-h" className="display mt-2 text-3xl sm:text-4xl">Let three AI bidders run it</h2>
           <p className="mt-3 text-[15px] leading-relaxed text-canvas/75">
-            Three AI bidders, each with a real PayPal hold, bid against each other and against you. Join from /paddle to jump in; Gus calls every lot, and the holds settle at the end.
+            Three AI bidders, each with a real PayPal hold, bid against each other and against anyone who joins with your room code. Gus calls every lot, and the holds settle at the end.
           </p>
         </div>
         <div className="flex flex-col items-start gap-3">
@@ -78,7 +78,7 @@ export function AutopilotPanel() {
               onClick={() => void act("start")}
               className="rounded-md bg-canvas px-5 py-2.5 text-[15px] font-medium text-ink transition-colors hover:bg-white disabled:opacity-60"
             >
-              {busy && !running ? "Starting…" : running ? "Running…" : "Start autopilot"}
+              {busy && !running ? "Starting…" : running ? "Running…" : "Start the AI bidders"}
             </button>
             <button
               type="button"

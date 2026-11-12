@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import type { AutopilotStatus } from "@/lib/ai/autopilot";
 import { NightInNumbers } from "@/components/proof/NightInNumbers";
 import { CopyId } from "@/components/proof/PayPalProof";
+import { RoomGate } from "@/components/RoomGate";
 import { SandboxBadge } from "@/components/SandboxBadge";
 import { useRoom, withRoom } from "@/components/SiteNav";
 import { btn, Pill } from "@/components/ui";
@@ -315,6 +316,14 @@ function UnderTheHood({ state, auto, room }: { state: State; auto: AutopilotStat
 }
 
 export default function DemoPage() {
+  return (
+    <RoomGate>
+      <Demo />
+    </RoomGate>
+  );
+}
+
+function Demo() {
   const room = useRoom();
   const { state, error } = useAuctionState(500);
   const speech = useSpeech(state?.caption);
@@ -336,17 +345,6 @@ export default function DemoPage() {
     }
   }
 
-  if (!room) {
-    return (
-      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-16 sm:px-6">
-        <h1 className="display text-4xl text-ink">Demo auction</h1>
-        <p className="mt-4 text-ink-2">Each demo runs in its own room. Start one from the home page.</p>
-        <Link href="/" className={`${btn.primary} mt-6`}>
-          Go to the home page
-        </Link>
-      </main>
-    );
-  }
   if (!state) {
     return (
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-12 sm:px-6">

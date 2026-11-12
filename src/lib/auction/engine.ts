@@ -304,6 +304,17 @@ async function doAuthorizePaddle(paddleId: string, orderId: string): Promise<Pad
   return p;
 }
 
+/** A bidder backed out before approving the hold: forget the paddle (nothing was authorized). */
+export function removePendingPaddle(paddleId: string): State {
+  const s = getState();
+  const k = s.paddles.findIndex((p) => p.id === paddleId);
+  if (k < 0) return s;
+  if (s.paddles[k].status !== "pending") throw new EngineError(409, "That paddle already has a hold");
+  s.paddles.splice(k, 1);
+  save();
+  return s;
+}
+
 // ---------------------------------------------------------------- lots & bids
 
 export function startLot(lotId: string): State {

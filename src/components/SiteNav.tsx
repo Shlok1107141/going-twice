@@ -64,7 +64,7 @@ export function SiteNav() {
           )}
         </div>
         <ul className="-mx-2 flex w-full items-center justify-between sm:mx-0 sm:w-auto sm:justify-end sm:gap-1">
-          {PAGES.map((p) => {
+          {(room ? PAGES : []).map((p) => {
             const active = pathname === p.href;
             return (
               <li key={p.href}>

@@ -37,7 +37,7 @@ type State = { status: 'lobby'|'live'|'closed'; demoMode: boolean; testCards?: b
 Idempotency: `/api/close` must be safe to call twice (second call returns current state without new money movement).
 
 ## UI conventions
-- Stage plays `state.caption.text` aloud with `speechSynthesis` when `caption.ts` changes (user must click "Start sound" once), and always shows captions.
+- Stage and demo page speak `state.caption.text` when `caption.ts` changes (after one click to turn sound on), and always show captions. The voice is Kokoro: pre-rendered clips in `public/gus/clips`, else rendered in the browser (`public/gus/worker.js`). `caption.kind` (`bid`, `sold`, `pitch`, …) tells the client whether the line cuts Gus off.
 - Paddle view stores `paddleId` in `localStorage` key `gt.paddleId`.
 - Next bid amount shown = `max(startPrice, highBid + increment)`.
 

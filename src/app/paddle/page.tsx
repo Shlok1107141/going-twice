@@ -1,14 +1,13 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { PayPalButtons } from "@/components/PayPalButtons";
 import { InstallHint } from "@/components/InstallHint";
-import { JoinRoom } from "@/components/JoinRoom";
+import { RoomGate } from "@/components/RoomGate";
 import { useRoom } from "@/components/SiteNav";
 import { SandboxBadge } from "@/components/SandboxBadge";
 import { btn, Eyebrow, field, fieldLabel } from "@/components/ui";
-import { post } from "@/lib/client/api";
+import { post, send } from "@/lib/client/api";
 import { findPaddle, headroom, isBidEvent, money, nextBid } from "@/lib/client/format";
 import type { Paddle, State } from "@/lib/client/types";
 import { useAuctionState } from "@/lib/client/useAuctionState";
@@ -387,7 +386,11 @@ function AbsenteeSection({ state, refresh }: { state: State; refresh: () => Prom
             Agent paddle <span className="num display text-2xl">{agent.number}</span> <span className="text-muted">for {agent.name}</span>
           </p>
           {agent.status === "pending" ? (
-            <AuthorizeCard paddle={agent} orderId={orderId} onDone={refresh} onBack={() => stored.set(null)} />
+            <AuthorizeCard paddle={agent} orderId={orderId} onDone={refresh} onBack={() => {
+                send("DELETE", `/api/paddle/${agent.id}`).catch(() => {});
+                stored.set(null);
+              }}
+            />
           ) : (
             <dl className="grid grid-cols-3 gap-3 text-sm">
               {[
@@ -477,26 +480,15 @@ function Skeleton({ label }: { label: string }) {
 }
 
 export default function PaddlePage() {
-  const room = useRoom();
-  const router = useRouter();
-  if (!room) {
-    return (
-      <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-6 px-4 pb-16 pt-10">
-        <section className={`${card} space-y-4`}>
-          <div className="flex items-center justify-between gap-3">
-            <h1 className="display text-3xl text-ink">Join an auction</h1>
-            <BackButton onClick={() => router.push("/")} label="Home" />
-          </div>
-          <p className="leading-relaxed text-ink-2">Enter the room code from the host, or scan the code on the auction screen.</p>
-          <JoinRoom compact />
-        </section>
-      </main>
-    );
-  }
-  return <PaddleRoom room={room} />;
+  return (
+    <RoomGate>
+      <PaddleRoom />
+    </RoomGate>
+  );
 }
 
-function PaddleRoom({ room }: { room: string }) {
+function PaddleRoom() {
+  const room = useRoom();
   const { state, error, refresh } = useAuctionState(800);
   const stored = useStoredValue("gt.paddleId");
   const [pendingOrder, setPendingOrder] = useState<string | undefined>();
@@ -518,6 +510,8 @@ function PaddleRoom({ room }: { room: string }) {
   }
 
   function forget() {
+    // Backing out before the hold was approved: drop the unused paddle on the server too.
+    if (paddle?.status === "pending") send("DELETE", `/api/paddle/${paddle.id}`).catch(() => {});
     stored.set(null);
     setPendingOrder(undefined);
   }

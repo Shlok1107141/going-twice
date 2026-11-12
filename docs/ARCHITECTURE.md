@@ -2,7 +2,7 @@
 
 An AI auctioneer runs a school charity auction out loud. Each bidder's **paddle is one PayPal authorization hold** (Orders v2 `intent=AUTHORIZE`). At the close, each winner is captured once for what they won (`final_capture:true`, less than the hold), everyone else is voided, the proceeds go to the PTA treasurer through one Payouts batch, and each winner gets a PayPal invoice receipt marked paid.
 
-Stack: Next.js 16 (App Router, TypeScript) on Render (one instance), REST to PayPal via `src/lib/paypal` (no SDK), Claude for the auctioneer voice and the absentee agent, browser `speechSynthesis` for TTS, SSE for live updates.
+Stack: Next.js 16 (App Router, TypeScript) on Render (one instance), REST to PayPal via `src/lib/paypal` (no SDK), Gemini for the lot sentences, the absentee agent and the demo bidders, Kokoro (open source) for Gus's voice, and polling of `/api/state` for live updates.
 
 **Rule zero: the AI never gates money.** Code validates bids and runs every PayPal call. Claude only writes lines, chooses pacing, and turns one sentence into an absentee bidding policy.
 

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { SandboxBadge } from "@/components/SandboxBadge";
 import { DemoRun } from "@/components/DemoRun";
 import { StartRoom } from "@/components/StartRoom";
@@ -11,15 +10,6 @@ const steps = [
   ["Bid with one tap", "Gus, the AI auctioneer, calls the room. Every bid is checked against that bidder's hold."],
   ["The hammer falls", "Winners are charged exactly what they won. Every other hold is released in full."],
   ["Proceeds paid out", "The money goes to the organizer, and each winner gets a PayPal invoice as a receipt."],
-];
-
-const footer = [
-  ["/stage", "Auction"],
-  ["/paddle", "Bid"],
-  ["/admin", "Host"],
-  ["/paypal", "PayPal"],
-  ["/report", "Report"],
-  ["/timeline", "Timeline"],
 ];
 
 function SpecimenCard() {
@@ -134,17 +124,9 @@ export default function Home() {
 
       <footer className="mx-auto mt-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-6 px-4 py-12 text-sm text-muted sm:px-6 2xl:max-w-[88rem]">
         <p>Going Twice</p>
-        <nav aria-label="Screens">
-          <ul className="flex flex-wrap gap-x-6 gap-y-2">
-            {footer.map(([href, label]) => (
-              <li key={href}>
-                <Link href={href} className="hover:text-ink hover:underline hover:underline-offset-4">
-                  {label}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </nav>
+        <a className="hover:text-ink hover:underline hover:underline-offset-4" href="https://github.com/Shlok1107141/going-twice">
+          Source on GitHub
+        </a>
       </footer>
     </main>
   );

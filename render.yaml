@@ -45,9 +45,10 @@ services:
       # GT_TEST_HOOKS must stay unset here: it enables fault injection for scripts/break-tests.mjs only.
       - key: DEMO_MODE
         sync: false
-      # Render Workflows (optional; unset = settle in-process, as in local/demo mode)
+      # Render Workflows (optional). "0" = settle in-process. Set to "1" only after the workflow service
+      # below has PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET; if a run cannot settle, the close falls back in-process.
       - key: RENDER_WORKFLOWS
-        value: "1"
+        value: "0"
       - key: RENDER_WORKFLOW_SLUG
         value: going-twice-settlement # = the workflow service name below
       - key: RENDER_API_KEY # Account Settings > API Keys

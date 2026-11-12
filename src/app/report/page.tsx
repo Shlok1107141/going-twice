@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { GalaReport } from "@/components/report/GalaReport";
+import { RoomGate } from "@/components/RoomGate";
 
 export const metadata: Metadata = {
   title: "Gala Report | Going Twice",
@@ -7,5 +8,9 @@ export const metadata: Metadata = {
 };
 
 export default function ReportPage() {
-  return <GalaReport />;
+  return (
+    <RoomGate>
+      <GalaReport />
+    </RoomGate>
+  );
 }

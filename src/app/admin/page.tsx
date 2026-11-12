@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AuctionTypePanel } from "@/components/admin/AuctionTypePanel";
 import { EventPanel } from "@/components/admin/EventPanel";
@@ -9,7 +8,7 @@ import { AutopilotPanel } from "@/components/admin/AutopilotPanel";
 import { SnapLot } from "@/components/admin/SnapLot";
 import { NightInNumbers } from "@/components/proof/NightInNumbers";
 import { QrCode } from "@/components/QrCode";
-import { PayPalProof } from "@/components/proof/PayPalProof";
+import { RoomGate } from "@/components/RoomGate";
 import { SandboxBadge } from "@/components/SandboxBadge";
 import { useRoom, withRoom } from "@/components/SiteNav";
 import { btn, PageHeader, panel, Pill, SectionTitle } from "@/components/ui";
@@ -91,50 +90,6 @@ function QuickPaddle({ disabled, onAdd }: { disabled: boolean; onAdd: (body: { n
   );
 }
 
-function RoomLinks({ room }: { room: string }) {
-  const origin = useOrigin();
-  const [copied, setCopied] = useState<string | null>(null);
-  const links = [
-    ["Auction stage", "/stage", "The big screen"],
-    ["Bid", "/paddle", "Bidders' phones"],
-    ["PayPal", "/paypal", "Every PayPal call"],
-    ["Report", "/report", "Settlement report"],
-    ["Timeline", "/timeline", "Hold timeline"],
-  ] as const;
-  async function copy(url: string, key: string) {
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(key);
-      setTimeout(() => setCopied(null), 1500);
-    } catch {
-      // clipboard blocked: the link is still visible
-    }
-  }
-  return (
-    <section aria-labelledby="links-h" className={panel}>
-      <SectionTitle id="links-h" hint={room ? `Every link below opens room ${room.toUpperCase()}.` : "Shared demo room. Start your own room from the home page for a private one."}>
-        Room links
-      </SectionTitle>
-      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        {links.map(([label, path, hint]) => {
-          const href = withRoom(path, room);
-          return (
-            <li key={path} className="flex items-center justify-between gap-2 rounded-lg border border-line px-4 py-3">
-              <a href={href} target={path === "/stage" ? "_blank" : undefined} rel="noreferrer" className="min-w-0 hover:underline hover:underline-offset-4">
-                <span className="block font-medium text-ink">{label}</span>
-                <span className="block text-xs text-muted">{hint}</span>
-              </a>
-              <button type="button" onClick={() => copy(`${origin}${href}`, path)} className={btn.small} aria-label={`Copy ${label} link`}>
-                {copied === path ? "Copied" : "Copy"}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-    </section>
-  );
-}
-
 function PayoutRetry({ row, onRetried }: { row: LedgerRow; onRetried: () => Promise<void> }) {
   const [available, setAvailable] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
@@ -197,10 +152,10 @@ function HostGuide({ room, done }: { room: string; done: [boolean, boolean, bool
   ];
   const next = steps.findIndex((s) => !s[2]);
   const origin = useOrigin();
-  const join = room ? `${origin}${withRoom("/paddle", room)}` : "";
+  const join = `${origin}${withRoom("/paddle", room)}`;
   return (
     <section aria-labelledby="guide-h" className={panel}>
-      {room ? (
+      {(
         <div className="mb-6 flex flex-wrap items-center gap-6 rounded-lg border border-clay/40 bg-clay-soft/40 p-5">
           {origin && <QrCode value={join} label="QR code: join this auction as a bidder" className="h-24 w-24 shrink-0" />}
           <div className="min-w-0">
@@ -211,10 +166,6 @@ function HostGuide({ room, done }: { room: string; done: [boolean, boolean, bool
             </p>
           </div>
         </div>
-      ) : (
-        <p className="mb-6 rounded-lg border border-line bg-sunken/60 p-4 text-sm text-ink-2">
-          This is the shared practice room. For an auction of your own, with its own room code, use <Link className="underline underline-offset-4" href="/#own">Host an auction</Link> on the home page.
-        </p>
       )}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <SectionTitle id="guide-h" hint="Four steps. The highlighted one is what to do next.">
@@ -248,6 +199,14 @@ function HostGuide({ room, done }: { room: string; done: [boolean, boolean, bool
 }
 
 export default function AdminPage() {
+  return (
+    <RoomGate>
+      <Host />
+    </RoomGate>
+  );
+}
+
+function Host() {
   const room = useRoom();
   const { state, error, refresh } = useAuctionState(1000);
   const [busy, setBusy] = useState<string | null>(null);
@@ -455,40 +414,6 @@ export default function AdminPage() {
 
       <SnapLot />
 
-      <RoomLinks room={room} />
-
-      <section className={panel} aria-labelledby="led-h">
-        <SectionTitle id="led-h" hint="Every PayPal call, newest first. Sandbox ids.">
-          PayPal proof
-        </SectionTitle>
-        <PayPalProof state={state} />
-      </section>
-
-      <section className={panel} aria-labelledby="rec-h">
-        <SectionTitle id="rec-h">Receipts</SectionTitle>
-        {state.receipts.length === 0 ? (
-          <p className="text-muted">Receipts appear after the auction closes.</p>
-        ) : (
-          <ul className="divide-y divide-line">
-            {state.receipts.map((r) => (
-              <li key={r.paddleId}>
-                <details className="group py-3">
-                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-ink">
-                    <span>
-                      {paddleName(r.paddleId)}
-                      {r.invoiceId && <span className="ml-3 font-mono text-xs text-muted">invoice {r.invoiceId}</span>}
-                    </span>
-                    <span aria-hidden className="text-muted transition-transform group-open:rotate-45">
-                      +
-                    </span>
-                  </summary>
-                  <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-ink-2">{r.text}</p>
-                </details>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
     </main>
   );
 }

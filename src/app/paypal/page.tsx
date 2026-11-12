@@ -3,6 +3,7 @@
 import { DemoRun } from "@/components/DemoRun";
 import { NightInNumbers } from "@/components/proof/NightInNumbers";
 import { CopyId, PayPalProof } from "@/components/proof/PayPalProof";
+import { RoomGate } from "@/components/RoomGate";
 import { SandboxBadge } from "@/components/SandboxBadge";
 import { useRoom, withRoom } from "@/components/SiteNav";
 import { PageHeader, panel, Pill, SectionTitle } from "@/components/ui";
@@ -103,6 +104,14 @@ function Bidders({ state }: { state: State }) {
 }
 
 export default function PayPalPage() {
+  return (
+    <RoomGate>
+      <PayPalTrail />
+    </RoomGate>
+  );
+}
+
+function PayPalTrail() {
   const room = useRoom();
   const { state, error } = useAuctionState(1000);
 

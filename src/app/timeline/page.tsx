@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { RoomGate } from "@/components/RoomGate";
 
 // Bryntum touches window/document on import, so it is client-only.
 const TimelineView = dynamic(() => import("@/components/timeline/TimelineView"), {
@@ -9,5 +10,9 @@ const TimelineView = dynamic(() => import("@/components/timeline/TimelineView"),
 });
 
 export default function TimelinePage() {
-  return <TimelineView />;
+  return (
+    <RoomGate>
+      <TimelineView />
+    </RoomGate>
+  );
 }

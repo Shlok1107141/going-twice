@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { NightInNumbersOverlay } from "@/components/proof/NightInNumbers";
 import { QrCode } from "@/components/QrCode";
+import { RoomGate } from "@/components/RoomGate";
 import { SandboxBadge } from "@/components/SandboxBadge";
 import { Wordmark } from "@/components/SiteNav";
 import { typeConfig } from "@/lib/auction/auctionTypes";
@@ -106,6 +107,14 @@ function RosterRow({ p, leading }: { p: Paddle; leading: boolean }) {
 }
 
 export default function StagePage() {
+  return (
+    <RoomGate>
+      <Stage />
+    </RoomGate>
+  );
+}
+
+function Stage() {
   const { state, error } = useAuctionState(500);
   const origin = useOrigin();
   const room = typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("room");

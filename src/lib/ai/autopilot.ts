@@ -360,7 +360,7 @@ export async function startAutopilot(opts: { personas?: PersonaSpec[]; lots?: st
     throw e;
   }
   status.phase = "running";
-  pushEvent({ type: "system", text: `Autopilot gala: ${specs.map((p) => p.name).join(", ")} take their paddles. Humans can join from /paddle at any time.` });
+  pushEvent({ type: "system", text: `The AI bidders take their paddles: ${specs.map((p) => p.name).join(", ")}. Anyone can still join and bid against them.` });
   void runLoop(run);
   return status;
 }
