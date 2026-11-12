@@ -1,0 +1,46 @@
+/* Hold Timeline: Bryntum Scheduler skinned to the app's cream / stone / amber palette. */
+.tl-host { height: 560px; }
+.tl-host .b-scheduler {
+  --b-primary: #b45309;
+  font-family: var(--font-geist-sans), Arial, sans-serif;
+}
+.tl-host .b-grid-header { background: #f5efe2; color: #44403c; }
+.tl-res { display: flex; align-items: center; gap: .6rem; line-height: 1.15; }
+.tl-res b { display: block; font-weight: 600; color: #1c1917; }
+.tl-res b i { font-style: normal; font-family: var(--font-display), Georgia, serif; color: #b45309; margin-right: .2rem; }
+.tl-res small { color: #78716c; font-size: .72rem; }
+.tl-av { font-size: 1.4rem; }
+
+.tl-host .b-sch-event-wrap.tl-honor .b-sch-event,
+.tl-host .tl-honor.b-sch-event { background: #d97706; color: #fff; border-radius: 6px; }
+.tl-host .tl-validity.b-sch-event {
+  color: #78350f; border: 1px dashed #b45309; border-radius: 6px;
+  background: repeating-linear-gradient(135deg, #fde9bd 0 6px, #fff7e3 6px 12px);
+}
+.tl-host .tl-lot.b-sch-event { background: #292524; color: #fef3c7; border-radius: 6px; }
+.tl-host .tl-lot-open.b-sch-event { background: #b45309; color: #fff; border-radius: 6px; box-shadow: 0 0 0 3px rgba(217,119,6,.3); }
+.tl-host .tl-bid.b-sch-event.b-milestone .b-sch-event-content { display: none; }
+.tl-host .tl-bid .b-sch-event-content { display: none; }
+.tl-host .tl-bid.b-sch-event { background: #1c1917; border: 2px solid #fff; border-radius: 50%; transform: scale(.6); z-index: 5; }
+.tl-host .tl-capture.b-sch-event { background: #15803d; border: 2px solid #fff; z-index: 6; }
+.tl-host .tl-capture .b-sch-event-content,
+.tl-host .tl-void .b-sch-event-content { background: #fff; border-radius: 8px; padding: 0 8px; border: 1px solid #15803d; color: #14532d; font-weight: 700; margin-left: 6px; }
+.tl-host .tl-void.b-sch-event { background: #a8a29e; border: 2px solid #fff; z-index: 6; }
+.tl-host .tl-void .b-sch-event-content { border-color: #a8a29e; color: #57534e; }
+
+.tl-host .b-sch-timerange.tl-range-honor { border-color: #d97706; background: rgba(217,119,6,.08); color: #92400e; }
+.tl-host .b-sch-timerange.tl-range-expiry { border-color: #b91c1c; background: rgba(185,28,28,.08); color: #991b1b; }
+.tl-host .b-sch-current-time { border-color: #1c1917; }
+.tl-tip b { font-family: var(--font-display), Georgia, serif; }
+.tl-tip small { color: #78716c; }
+
+.tl-sw { display: inline-block; width: 14px; height: 10px; margin-right: 6px; border-radius: 3px; vertical-align: -1px; }
+.tl-sw-honor { background: #d97706; }
+.tl-sw-validity { background: repeating-linear-gradient(135deg, #fde9bd 0 3px, #fff 3px 6px); border: 1px dashed #b45309; }
+.tl-sw-bid { background: #1c1917; border-radius: 50%; width: 8px; }
+.tl-sw-capture { background: #15803d; border-radius: 2px; transform: rotate(45deg); width: 9px; height: 9px; }
+.tl-sw-void { background: #a8a29e; border-radius: 2px; transform: rotate(45deg); width: 9px; height: 9px; }
+.tl-sw-lot { background: #292524; }
+
+.tl-host .tl-marker.b-sch-event { background: #b91c1c; border: 2px solid #fff; z-index: 6; }
+.tl-host .tl-marker .b-sch-event-content { background: #fff; border: 1px solid #b91c1c; color: #7f1d1d; border-radius: 8px; padding: 0 8px; font-weight: 700; margin-left: 6px; }
